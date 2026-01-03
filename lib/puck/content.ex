@@ -1,48 +1,29 @@
 defmodule Puck.Content do
   @moduledoc """
-  Unified content part struct for multi-modal messages.
+  Multi-modal content for messages.
 
-  Provides a single, provider-agnostic representation for content blocks.
-  The Part struct can represent text, images, files, audio, and other
-  content types supported by various LLM providers.
+  ## Types
 
-  ## Supported Types
-
-  - `:text` - Plain text content
-  - `:image_url` - Image from URL
-  - `:image` - Base64/binary encoded image
-  - `:file` - Generic file (PDF, CSV, etc.)
-  - `:audio` - Audio content
-  - `:video` - Video content
+  - `text/1` - Plain text
+  - `image_url/1` - Image from URL
+  - `image/2` - Binary image data
+  - `file/2` - Files (PDF, CSV, etc.)
+  - `audio/2`, `video/2` - Media content
 
   ## Examples
 
       alias Puck.Content
 
-      # Text content
-      text = Content.text("What's in this image?")
+      Content.text("What's in this image?")
+      Content.image_url("https://example.com/cat.png")
+      Content.image(image_bytes, "image/png")
+      Content.file(pdf_bytes, "application/pdf", filename: "report.pdf")
 
-      # Image from URL
-      image = Content.image_url("https://example.com/cat.png")
-
-      # Base64 encoded image
-      image = Content.image(image_bytes, "image/png")
-
-      # PDF document
-      pdf = Content.file(pdf_bytes, "application/pdf", filename: "report.pdf")
-
-      # Use in a call
+      # Multi-modal call
       {:ok, response, _ctx} = Puck.call([
-        Content.text("Analyze this image"),
-        Content.image_url("https://example.com/chart.png")
+        Content.text("Describe this"),
+        Content.image_url("https://example.com/photo.png")
       ], model: "anthropic:claude-sonnet-4-5")
-
-      # Multi-modal with roles
-      messages = [
-        %{role: :user, content: [Content.text("What's this?"), Content.image_url("https://example.com/cat.png")]},
-        %{role: :assistant, content: "I see a cat."},
-        %{role: :user, content: Content.text("What color is it?")}
-      ]
 
   """
 

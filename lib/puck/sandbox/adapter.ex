@@ -2,8 +2,8 @@ defmodule Puck.Sandbox.Adapter do
   @moduledoc """
   Behaviour for sandbox adapters.
 
-  Adapters implement the actual sandbox creation and management for different
-  backends (Docker, Fly Machines, etc.).
+  Adapters implement sandbox creation and management. Currently only the Test
+  adapter is shipped. Custom adapters can be created by implementing this behaviour.
 
   ## Required Callbacks
 

@@ -1,23 +1,11 @@
 defmodule Puck.Message do
   @moduledoc """
-  Represents a single message in a conversation.
+  A single message in a conversation.
 
-  Content is always a list of Content.Part structs internally.
-  Strings are automatically wrapped for convenience.
+  ## Example
 
-  ## Examples
-
-      # Simple text (string wrapped automatically)
-      message = Puck.Message.new(:user, "Hello!")
-
-      # Multi-modal with explicit Content.Part
-      message = Puck.Message.new(:user, [
-        Puck.Content.text("What's in this image?"),
-        Puck.Content.image_url("https://example.com/image.png")
-      ])
-
-      # Message with metadata
-      message = Puck.Message.new(:assistant, "Hi there!", %{tokens: 5})
+      Puck.Message.new(:user, "Hello!")
+      Puck.Message.new(:user, [Puck.Content.text("Hi"), Puck.Content.image_url("...")])
 
   """
 

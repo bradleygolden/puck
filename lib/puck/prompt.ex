@@ -2,72 +2,23 @@ defmodule Puck.Prompt do
   @moduledoc """
   Behaviour for prompt template engines.
 
-  This abstracts template parsing and rendering so different engines can be
-  used interchangeably.
-
-  ## Why Pluggable Templates?
-
-  Different template engines have different strengths:
-
-  - **Solid (Liquid)** - Familiar `{{ variable }}` syntax, safe sandboxed execution
-  - **EEx** - Elixir's built-in, full language power
-  - **HEEx** - HTML-aware, great for structured content
-
-  This behaviour lets you swap engines without changing agent code.
-
   ## Example
 
-  Using the default Solid implementation (requires `{:solid, "~> 0.15"}`):
+  Using Solid (requires `{:solid, "~> 0.15"}`):
 
       alias Puck.Prompt.Solid
 
-      # Parse a template
       {:ok, template} = Solid.parse("Hello {{ name }}!")
-
-      # Render with context
       {:ok, result} = Solid.render(template, %{name: "World"})
-      # => "Hello World!"
 
-      # Or parse and render in one step
+      # Or in one step
       {:ok, result} = Solid.evaluate("Hello {{ name }}!", %{name: "World"})
 
-  ## Implementing a Custom Engine
+  ## Callbacks
 
-  To use a different template engine, implement this behaviour:
-
-      defmodule MyApp.EExPrompt do
-        @behaviour Puck.Prompt
-
-        @impl true
-        def parse(template), do: {:ok, template}
-
-        @impl true
-        def parse!(template), do: template
-
-        @impl true
-        def render(template, context) do
-          result = EEx.eval_string(template, assigns: Map.to_list(context))
-          {:ok, result}
-        rescue
-          e -> {:error, e}
-        end
-
-        @impl true
-        def render!(template, context) do
-          EEx.eval_string(template, assigns: Map.to_list(context))
-        end
-
-        @impl true
-        def evaluate(template, context), do: render(template, context)
-
-        @impl true
-        def evaluate!(template, context) do
-          case evaluate(template, context) do
-            {:ok, result} -> result
-            {:error, e} -> raise e
-          end
-        end
-      end
+  - `parse/1`, `parse!/1` - Parse a template string
+  - `render/2`, `render!/2` - Render a parsed template
+  - `evaluate/2`, `evaluate!/2` - Parse and render in one step
 
   """
 

@@ -1,22 +1,11 @@
 defmodule Puck.Context do
   @moduledoc """
-  Manages conversation context including message history and metadata.
+  Conversation context with message history and metadata.
 
-  The context holds the conversation state between calls to an agent,
-  allowing for multi-turn conversations.
+  ## Example
 
-  ## Examples
-
-      # Create a new context
       context = Puck.Context.new()
-
-      # Add messages
-      context = context
-        |> Puck.Context.add_message(:user, "Hello!")
-        |> Puck.Context.add_message(:assistant, "Hi there!")
-
-      # Get messages
-      messages = Puck.Context.messages(context)
+      context = Puck.Context.add_message(context, :user, "Hello!")
 
   """
 

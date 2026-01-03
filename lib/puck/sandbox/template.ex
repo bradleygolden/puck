@@ -1,32 +1,11 @@
 defmodule Puck.Sandbox.Template do
   @moduledoc """
-  A reusable sandbox configuration template.
-
-  Templates define default configurations that can be instantiated with overrides.
-  They are adapter-agnostic and can be stored wherever makes sense for your application
-  (module attributes, config files, etc.).
+  Reusable sandbox configuration template.
 
   ## Example
 
-      alias Puck.Sandbox
-      alias Puck.Sandbox.Template
-      alias Puck.Sandbox.Adapters.Docker
-
-      # Define a template
-      @python_template Template.new(
-        adapter: Docker,
-        config: %{
-          image: "python:3.12",
-          memory_mb: 512,
-          workdir: "/workspace"
-        }
-      )
-
-      # Or using shorthand tuple syntax
-      @node_template Template.new({Docker, %{image: "node:22-slim", memory_mb: 256}})
-
-      # Create sandbox from template
-      {:ok, sandbox} = Sandbox.create(@python_template)
+      template = Puck.Sandbox.Template.new(adapter: MyAdapter, config: %{image: "python:3.12"})
+      {:ok, sandbox} = Puck.Sandbox.create(template)
 
       # With overrides
       {:ok, sandbox} = Sandbox.create(@python_template, memory_mb: 1024)

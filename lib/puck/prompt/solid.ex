@@ -3,53 +3,17 @@ if Code.ensure_loaded?(Solid) do
     @moduledoc """
     Solid (Liquid) template engine for prompts.
 
-    Uses `{{ variable }}` syntax familiar from Liquid/Jinja/Django templates.
-    Solid is a safe, sandboxed template engine - templates cannot execute
-    arbitrary Elixir code.
-
-    ## Examples
+    ## Example
 
         alias Puck.Prompt.Solid
 
-        # Parse and render separately (for reuse)
         {:ok, template} = Solid.parse("Hello {{ name }}!")
         {:ok, "Hello World!"} = Solid.render(template, %{name: "World"})
 
-        # Parse and render in one step
+        # Or in one step
         {:ok, "Hello World!"} = Solid.evaluate("Hello {{ name }}!", %{name: "World"})
 
-        # With raising variants
-        template = Solid.parse!("Hello {{ name }}!")
-        "Hello World!" = Solid.render!(template, %{name: "World"})
-
-    ## Template Syntax
-
-    Solid supports Liquid template syntax:
-
-        # Variables
-        {{ user.name }}
-
-        # Filters
-        {{ name | upcase }}
-        {{ price | money }}
-
-        # Conditionals
-        {% if user %}Hello {{ user.name }}{% endif %}
-
-        # Loops
-        {% for item in items %}{{ item }}{% endfor %}
-
-    See the [Solid documentation](https://hexdocs.pm/solid) for full syntax reference.
-
-    ## Context Keys
-
-    Context keys can be atoms or strings. They are normalized to strings
-    internally since Solid requires string keys:
-
-        # Both work the same
-        Solid.evaluate("Hello {{ name }}!", %{name: "World"})
-        Solid.evaluate("Hello {{ name }}!", %{"name" => "World"})
-
+    See [Solid documentation](https://hexdocs.pm/solid) for template syntax.
     """
 
     @behaviour Puck.Prompt

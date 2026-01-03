@@ -2,61 +2,28 @@ defmodule Puck.Backend do
   @moduledoc """
   Behaviour for LLM backend implementations.
 
-  Backends are responsible for communicating with LLM APIs and returning
-  responses as `Puck.Response` structs. This normalization ensures your
-  agent loop code works regardless of which provider you're using.
+  ## Callbacks
 
-  ## Implementing a Backend
+  - `call/3` - Synchronous call to the LLM
+  - `stream/3` - Streaming call returning an enumerable
+  - `introspect/1` - (optional) Returns backend metadata
+
+  ## Example
 
       defmodule MyBackend do
         @behaviour Puck.Backend
 
         @impl true
         def call(config, messages, opts) do
-          # Make API call and return Response
           {:ok, Puck.Response.new(content: "Hello!", finish_reason: :stop)}
         end
 
         @impl true
         def stream(config, messages, opts) do
-          stream = Stream.map(["Hello", " ", "world!"], fn chunk ->
-            %{content: chunk}
-          end)
+          stream = Stream.map(["Hello", " ", "world!"], &%{content: &1})
           {:ok, stream}
         end
       end
-
-  ## Structured Output
-
-  Backends can support structured output via the `:output_schema` option.
-  When provided, the backend should:
-
-  1. Include the JSON schema in the prompt/request
-  2. Parse the response according to the schema
-  3. Return structured data in `response.content`
-
-  Example with structured output (requires `:zoi` dep):
-
-      output_schema = Zoi.object(%{
-        name: Zoi.string(),
-        age: Zoi.integer()
-      })
-
-      {:ok, response, context} = Puck.call(agent, prompt, context,
-        output_schema: output_schema
-      )
-
-      response.content
-      # => %{name: "Alice", age: 30}
-
-  ## Required Callbacks
-
-  - `call/3` - Synchronous call to the LLM
-  - `stream/3` - Streaming call that returns an enumerable
-
-  ## Optional Callbacks
-
-  - `introspect/1` - Returns metadata about the backend
 
   """
 

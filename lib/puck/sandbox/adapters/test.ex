@@ -1,34 +1,19 @@
 defmodule Puck.Sandbox.Adapters.Test do
   @moduledoc """
-  Test adapter for Puck.Sandbox.
-
-  An in-memory adapter for testing that uses an Agent to store state.
-  Allows mocking exec responses and tracking command history.
+  In-memory test adapter for Puck.Sandbox.
 
   ## Usage
 
-      # In your test setup
       setup do
         start_supervised!(Puck.Sandbox.Adapters.Test)
         :ok
       end
 
-      test "executes commands" do
-        alias Puck.Sandbox.Adapters.Test, as: TestAdapter
-
-        {:ok, sandbox} = Puck.Sandbox.create({TestAdapter, %{}})
-
-        # Set up mock response
-        TestAdapter.set_exec_response(sandbox.id, "echo hello",
-          {:ok, %Puck.Sandbox.ExecResult{stdout: "hello", exit_code: 0}})
-
+      test "sandbox" do
+        {:ok, sandbox} = Puck.Sandbox.create({Puck.Sandbox.Adapters.Test, %{}})
         {:ok, result} = Puck.Sandbox.exec(sandbox, "echo hello")
-        assert result.stdout == "hello"
-
-        # Check command history
-        history = TestAdapter.get_exec_history(sandbox.id)
-        assert "echo hello" in history
       end
+
   """
 
   @behaviour Puck.Sandbox.Adapter

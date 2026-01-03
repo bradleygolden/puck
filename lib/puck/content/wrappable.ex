@@ -1,33 +1,11 @@
 defprotocol Puck.Content.Wrappable do
   @moduledoc """
-  Protocol for converting content to a list of `Puck.Content.Part` structs.
+  Protocol for converting content to `Puck.Content.Part` structs.
 
-  This protocol defines the boundary between arbitrary content (strings, maps,
-  structs, etc.) and the Part-based representation used for LLM messages.
-
-  ## Why a Protocol?
-
-  Different content types need different handling when stored in context
-  or sent to LLMs:
-
+  Built-in implementations:
   - Strings become text parts
-  - Maps/structs are JSON-encoded for LLM consumption
+  - Maps/structs are JSON-encoded
   - Parts pass through unchanged
-
-  Using a protocol allows:
-  1. Clear boundary definition
-  2. Extensibility for custom types
-  3. Idiomatic Elixir polymorphism
-
-  ## Implementing for Custom Types
-
-  If you have custom structs that should be stored differently:
-
-      defimpl Puck.Content.Wrappable, for: MyApp.CustomResponse do
-        def wrap(response) do
-          [Puck.Content.text(MyApp.CustomResponse.to_string(response))]
-        end
-      end
 
   """
 

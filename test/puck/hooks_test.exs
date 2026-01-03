@@ -1,42 +1,42 @@
 defmodule Puck.HooksTest do
   use ExUnit.Case, async: true
 
-  alias Puck.{Agent, Context, Hooks, Response}
+  alias Puck.{Client, Context, Hooks, Response}
 
   defmodule TrackingHooks do
     @behaviour Puck.Hooks
 
     @impl true
-    def on_call_start(agent, prompt, context) do
-      send(self(), {:hook, :on_call_start, agent, prompt, context})
+    def on_call_start(client, prompt, context) do
+      send(self(), {:hook, :on_call_start, client, prompt, context})
       {:cont, prompt}
     end
 
     @impl true
-    def on_call_end(agent, response, context) do
-      send(self(), {:hook, :on_call_end, agent, response, context})
+    def on_call_end(client, response, context) do
+      send(self(), {:hook, :on_call_end, client, response, context})
       {:cont, response}
     end
 
     @impl true
-    def on_call_error(agent, error, context) do
-      send(self(), {:hook, :on_call_error, agent, error, context})
+    def on_call_error(client, error, context) do
+      send(self(), {:hook, :on_call_error, client, error, context})
     end
 
     @impl true
-    def on_stream_start(agent, prompt, context) do
-      send(self(), {:hook, :on_stream_start, agent, prompt, context})
+    def on_stream_start(client, prompt, context) do
+      send(self(), {:hook, :on_stream_start, client, prompt, context})
       {:cont, prompt}
     end
 
     @impl true
-    def on_stream_chunk(agent, chunk, context) do
-      send(self(), {:hook, :on_stream_chunk, agent, chunk, context})
+    def on_stream_chunk(client, chunk, context) do
+      send(self(), {:hook, :on_stream_chunk, client, chunk, context})
     end
 
     @impl true
-    def on_stream_end(agent, context) do
-      send(self(), {:hook, :on_stream_end, agent, context})
+    def on_stream_end(client, context) do
+      send(self(), {:hook, :on_stream_end, client, context})
     end
 
     @impl true
@@ -56,7 +56,7 @@ defmodule Puck.HooksTest do
     @behaviour Puck.Hooks
 
     @impl true
-    def on_call_start(_agent, prompt, _context) do
+    def on_call_start(_client, prompt, _context) do
       send(self(), {:hook, :partial_call_start})
       {:cont, prompt}
     end
@@ -66,12 +66,12 @@ defmodule Puck.HooksTest do
     @behaviour Puck.Hooks
 
     @impl true
-    def on_call_start(_agent, content, _context) do
+    def on_call_start(_client, content, _context) do
       {:cont, "transformed: #{content}"}
     end
 
     @impl true
-    def on_call_end(_agent, response, _context) do
+    def on_call_end(_client, response, _context) do
       {:cont, %{response | content: "modified: #{response.content}"}}
     end
 
@@ -90,7 +90,7 @@ defmodule Puck.HooksTest do
     @behaviour Puck.Hooks
 
     @impl true
-    def on_call_start(_agent, content, _context) do
+    def on_call_start(_client, content, _context) do
       {:cont, "[prefix] #{content}"}
     end
   end
@@ -99,7 +99,7 @@ defmodule Puck.HooksTest do
     @behaviour Puck.Hooks
 
     @impl true
-    def on_call_start(_agent, content, _context) do
+    def on_call_start(_client, content, _context) do
       {:cont, "#{content} [suffix]"}
     end
   end
@@ -108,7 +108,7 @@ defmodule Puck.HooksTest do
     @behaviour Puck.Hooks
 
     @impl true
-    def on_call_start(_agent, _content, _context) do
+    def on_call_start(_client, _content, _context) do
       {:halt, %Response{content: "cached response", metadata: %{}}}
     end
   end
@@ -117,7 +117,7 @@ defmodule Puck.HooksTest do
     @behaviour Puck.Hooks
 
     @impl true
-    def on_call_start(_agent, _content, _context) do
+    def on_call_start(_client, _content, _context) do
       {:error, :blocked_by_guardrails}
     end
   end
@@ -229,70 +229,70 @@ defmodule Puck.HooksTest do
 
   describe "call/4 with hooks" do
     test "invokes call lifecycle hooks" do
-      agent = Agent.new({Puck.Backends.Mock, response: "Hello!"}, hooks: TrackingHooks)
+      client = Client.new({Puck.Backends.Mock, response: "Hello!"}, hooks: TrackingHooks)
       context = Context.new()
 
-      {:ok, response, _context} = Puck.call(agent, "Hi!", context)
+      {:ok, response, _context} = Puck.call(client, "Hi!", context)
 
-      assert_received {:hook, :on_call_start, ^agent, "Hi!", ^context}
+      assert_received {:hook, :on_call_start, ^client, "Hi!", ^context}
       assert_received {:hook, :on_backend_request, _config, _messages}
       assert_received {:hook, :on_backend_response, _config, ^response}
-      assert_received {:hook, :on_call_end, ^agent, ^response, _updated_context}
+      assert_received {:hook, :on_call_end, ^client, ^response, _updated_context}
     end
 
     test "invokes on_call_error on failure" do
-      agent = Agent.new({Puck.Backends.Mock, error: :rate_limited}, hooks: TrackingHooks)
+      client = Client.new({Puck.Backends.Mock, error: :rate_limited}, hooks: TrackingHooks)
       context = Context.new()
 
-      {:error, :rate_limited} = Puck.call(agent, "Hi!", context)
+      {:error, :rate_limited} = Puck.call(client, "Hi!", context)
 
-      assert_received {:hook, :on_call_start, ^agent, "Hi!", ^context}
-      assert_received {:hook, :on_call_error, ^agent, :rate_limited, ^context}
+      assert_received {:hook, :on_call_start, ^client, "Hi!", ^context}
+      assert_received {:hook, :on_call_error, ^client, :rate_limited, ^context}
     end
 
-    test "per-call hooks override agent hooks" do
-      agent = Agent.new({Puck.Backends.Mock, response: "Hello!"}, hooks: PartialHooks)
+    test "per-call hooks override client hooks" do
+      client = Client.new({Puck.Backends.Mock, response: "Hello!"}, hooks: PartialHooks)
       context = Context.new()
 
-      {:ok, _response, _context} = Puck.call(agent, "Hi!", context, hooks: TrackingHooks)
+      {:ok, _response, _context} = Puck.call(client, "Hi!", context, hooks: TrackingHooks)
 
       assert_received {:hook, :partial_call_start}
       assert_received {:hook, :on_call_start, _, _, _}
     end
 
     test "works without any hooks" do
-      agent = Agent.new({Puck.Backends.Mock, response: "Hello!"})
+      client = Client.new({Puck.Backends.Mock, response: "Hello!"})
       context = Context.new()
 
-      {:ok, response, _context} = Puck.call(agent, "Hi!", context)
+      {:ok, response, _context} = Puck.call(client, "Hi!", context)
       assert response.content == "Hello!"
     end
 
     test "halts execution and returns cached response" do
-      agent =
-        Agent.new({Puck.Backends.Mock, response: "Should not be called"}, hooks: HaltingHooks)
+      client =
+        Client.new({Puck.Backends.Mock, response: "Should not be called"}, hooks: HaltingHooks)
 
       context = Context.new()
 
-      {:ok, response, _context} = Puck.call(agent, "Hi!", context)
+      {:ok, response, _context} = Puck.call(client, "Hi!", context)
 
       assert response.content == "cached response"
     end
 
     test "returns error when hook errors" do
-      agent =
-        Agent.new({Puck.Backends.Mock, response: "Should not be called"}, hooks: ErrorHooks)
+      client =
+        Client.new({Puck.Backends.Mock, response: "Should not be called"}, hooks: ErrorHooks)
 
       context = Context.new()
 
-      {:error, :blocked_by_guardrails} = Puck.call(agent, "Hi!", context)
+      {:error, :blocked_by_guardrails} = Puck.call(client, "Hi!", context)
     end
 
     test "transforms content and response" do
-      agent = Agent.new({Puck.Backends.Mock, response: "Hello!"}, hooks: TransformingHooks)
+      client = Client.new({Puck.Backends.Mock, response: "Hello!"}, hooks: TransformingHooks)
       context = Context.new()
 
-      {:ok, response, _context} = Puck.call(agent, "Hi!", context)
+      {:ok, response, _context} = Puck.call(client, "Hi!", context)
 
       assert response.content == "modified: Hello!"
       assert response.metadata[:transformed] == true
@@ -301,26 +301,26 @@ defmodule Puck.HooksTest do
 
   describe "stream/4 with hooks" do
     test "invokes stream lifecycle hooks" do
-      agent =
-        Agent.new({Puck.Backends.Mock, stream_chunks: ["Hello", " ", "world"]},
+      client =
+        Client.new({Puck.Backends.Mock, stream_chunks: ["Hello", " ", "world"]},
           hooks: TrackingHooks
         )
 
       context = Context.new()
 
-      {:ok, stream, _context} = Puck.stream(agent, "Hi!", context)
+      {:ok, stream, _context} = Puck.stream(client, "Hi!", context)
 
-      assert_received {:hook, :on_stream_start, ^agent, "Hi!", ^context}
+      assert_received {:hook, :on_stream_start, ^client, "Hi!", ^context}
       assert_received {:hook, :on_backend_request, _config, _messages}
 
       chunks = Enum.to_list(stream)
       assert length(chunks) == 3
 
-      assert_received {:hook, :on_stream_chunk, ^agent, _, _}
-      assert_received {:hook, :on_stream_chunk, ^agent, _, _}
-      assert_received {:hook, :on_stream_chunk, ^agent, _, _}
+      assert_received {:hook, :on_stream_chunk, ^client, _, _}
+      assert_received {:hook, :on_stream_chunk, ^client, _, _}
+      assert_received {:hook, :on_stream_chunk, ^client, _, _}
 
-      assert_received {:hook, :on_stream_end, ^agent, ^context}
+      assert_received {:hook, :on_stream_end, ^client, ^context}
     end
   end
 end

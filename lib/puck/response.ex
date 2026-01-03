@@ -1,65 +1,20 @@
 defmodule Puck.Response do
   @moduledoc """
-  A consistent response struct for LLM outputs.
+  Normalized response struct for LLM outputs.
 
-  Every backend returns a `Puck.Response`, ensuring your agent loop code
-  works regardless of which provider you're using.
+  ## Fields
 
-  ## Why This Matters
-
-  Without a consistent response shape, your loop code becomes backend-specific:
-
-      # Without Response struct - backend-specific code
-      case response do
-        %{"choices" => [%{"message" => msg} | _]} -> msg["content"]  # OpenAI
-        %{"content" => [%{"text" => text} | _]} -> text               # Anthropic
-      end
-
-  With Response, it's always the same:
-
-      # With Response struct - works with any backend
-      response.content
-
-  ## Structure
-
-  - `content` - The response content (text, structured data, or multi-modal parts)
-  - `tool_calls` - List of tool calls requested by the model (if any)
-  - `finish_reason` - Why the model stopped (`:stop`, `:tool_use`, `:max_tokens`, etc.)
+  - `content` - Response content (text or structured data)
+  - `finish_reason` - Why the model stopped (`:stop`, `:tool_use`, `:max_tokens`)
+  - `tool_calls` - List of tool calls if `finish_reason` is `:tool_use`
   - `usage` - Token usage information
-  - `metadata` - Backend-specific data (model name, raw response, etc.)
+  - `metadata` - Backend-specific data
 
-  ## Metadata
-
-  Backends should populate these standardized metadata keys when available:
-
-  - `:response_id` - Provider's unique response identifier
-  - `:model` - Actual model used (may differ from requested)
-  - `:provider` - Provider name ("anthropic", "openai", etc.)
-  - `:latency_ms` - Request latency in milliseconds
-
-  These align with OpenTelemetry GenAI semantic conventions for observability.
-
-  ## Tool Calls
-
-  When the model wants to call tools, `tool_calls` will be populated:
-
-      %Puck.Response{
-        content: nil,
-        finish_reason: :tool_use,
-        tool_calls: [
-          %{
-            id: "call_abc123",
-            name: "search",
-            arguments: %{"query" => "elixir agents"}
-          }
-        ]
-      }
-
-  Your loop can pattern match on this:
+  ## Agentic Loop Pattern
 
       case response.finish_reason do
         :stop -> {:done, response.content}
-        :tool_use -> {:tool_calls, response.tool_calls}
+        :tool_use -> {:execute, response.tool_calls}
         :max_tokens -> {:error, :truncated}
       end
 

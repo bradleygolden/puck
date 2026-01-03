@@ -1,76 +1,25 @@
 if Code.ensure_loaded?(:telemetry) do
   defmodule Puck.Telemetry do
     @moduledoc """
-    Telemetry integration for Puck agents.
-
-    This module provides observability for Puck through the `:telemetry` library.
-    It implements `Puck.Hooks` to emit telemetry events at key lifecycle points.
+    Telemetry integration for observability.
 
     ## Usage
 
-    Use the hooks with your agent:
-
-        agent = Puck.Agent.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+        client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
           hooks: Puck.Telemetry.Hooks
         )
 
-    Or attach to specific calls:
-
-        Puck.call(agent, "Hello", context, hooks: Puck.Telemetry.Hooks)
-
     ## Events
 
-    The following telemetry events are emitted:
-
-    ### Call Events
-
-    - `[:puck, :call, :start]` - When a call begins
-      - Measurements: `%{system_time: integer}`
-      - Metadata: `%{agent: Agent.t(), prompt: String.t(), context: Context.t()}`
-
-    - `[:puck, :call, :stop]` - When a call completes successfully
-      - Measurements: `%{system_time: integer}`
-      - Metadata: `%{agent: Agent.t(), response: Response.t(), context: Context.t()}`
-
-    - `[:puck, :call, :error]` - When a call fails
-      - Measurements: `%{system_time: integer}`
-      - Metadata: `%{agent: Agent.t(), error: term(), context: Context.t()}`
-
-    ### Stream Events
-
-    - `[:puck, :stream, :start]` - When streaming begins
-      - Measurements: `%{system_time: integer}`
-      - Metadata: `%{agent: Agent.t(), prompt: String.t(), context: Context.t()}`
-
-    - `[:puck, :stream, :chunk]` - For each chunk received
-      - Measurements: `%{}`
-      - Metadata: `%{agent: Agent.t(), chunk: map(), context: Context.t()}`
-
-    - `[:puck, :stream, :stop]` - When streaming completes
-      - Measurements: `%{system_time: integer}`
-      - Metadata: `%{agent: Agent.t(), context: Context.t()}`
-
-    ### Backend Events
-
-    - `[:puck, :backend, :request]` - Before backend request
-      - Measurements: `%{system_time: integer}`
-      - Metadata: `%{config: map(), messages: list()}`
-
-    - `[:puck, :backend, :response]` - After backend responds
-      - Measurements: `%{system_time: integer}`
-      - Metadata: `%{config: map(), response: Response.t()}`
+    - `[:puck, :call, :start | :stop | :error]`
+    - `[:puck, :stream, :start | :chunk | :stop]`
+    - `[:puck, :backend, :request | :response]`
 
     ## Attaching Handlers
 
-        :telemetry.attach_many(
-          "my-puck-handler",
-          Puck.Telemetry.event_names(),
-          &MyHandler.handle_event/4,
-          nil
-        )
+        :telemetry.attach_many("my-handler", Puck.Telemetry.event_names(), &handler/4, nil)
 
-    Or use the convenience function:
-
+        # Or use the default logger
         Puck.Telemetry.attach_default_logger()
 
     """

@@ -3,68 +3,34 @@ if Code.ensure_loaded?(ReqLLM) do
     @moduledoc """
     Backend implementation using the ReqLLM library.
 
-    ReqLLM provides a unified interface to multiple LLM providers including
-    OpenAI, Anthropic, Google, Amazon Bedrock, OpenRouter, and more.
+    ReqLLM provides a unified interface to multiple LLM providers.
 
     ## Model Specification
 
     The model must include the provider in `"provider:model"` format:
 
-        # Direct API access
         model: "anthropic:claude-sonnet-4-5"
-        model: "openai:gpt-4"
-        model: "google:gemini-1.5-pro"
-
-        # Via OpenRouter (access many models through one API)
-        model: "openrouter:anthropic/claude-sonnet-4-5"
-        model: "openrouter:openai/gpt-4"
-
-        # Via Amazon Bedrock
-        model: "amazon_bedrock:anthropic.claude-sonnet-4-5-20241022-v2:0"
-
-        # Via Google Vertex AI
-        model: "google_vertex:claude-sonnet-4-5@20240620"
 
     ## Configuration
 
-    Backend options are passed in the agent tuple and forwarded to ReqLLM:
+    Backend options are passed in the client tuple and forwarded to ReqLLM:
 
     - `:temperature` - Sampling temperature (0.0 to 2.0)
     - `:max_tokens` - Maximum tokens in response
     - `:top_p` - Nucleus sampling parameter
     - `:stop` - Stop sequences
-    - Any other ReqLLM-supported options
 
     ## Examples
 
-        # Using Anthropic directly with options in the tuple
-        agent = Puck.Agent.new(
-          {:req_llm, model: "anthropic:claude-sonnet-4-5", temperature: 0.7, max_tokens: 1000}
+        # Basic usage
+        client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
+
+        # With options
+        client = Puck.Client.new(
+          {Puck.Backends.ReqLLM, model: "anthropic:claude-sonnet-4-5", temperature: 0.7}
         )
 
-        # Using OpenRouter
-        agent = Puck.Agent.new(
-          {:req_llm, "openrouter:anthropic/claude-sonnet-4-5"}
-        )
-
-        # Using Amazon Bedrock
-        agent = Puck.Agent.new(
-          {:req_llm, "amazon_bedrock:anthropic.claude-sonnet-4-5-20241022-v2:0"}
-        )
-
-    ## Supported Providers
-
-    See ReqLLM documentation for the full list. Common providers:
-
-    - `:anthropic` - Anthropic API (Claude models)
-    - `:openai` - OpenAI API (GPT models)
-    - `:google` - Google AI (Gemini models)
-    - `:openrouter` - OpenRouter (multi-provider gateway)
-    - `:amazon_bedrock` - AWS Bedrock
-    - `:google_vertex` - Google Vertex AI
-    - `:groq` - Groq (fast inference)
-    - `:cerebras` - Cerebras
-
+    See ReqLLM documentation for supported providers and additional options.
     """
 
     @behaviour Puck.Backend

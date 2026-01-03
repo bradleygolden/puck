@@ -1,39 +1,20 @@
 defmodule Puck.Backends.Mock do
   @moduledoc """
-  A mock backend for testing purposes.
+  Mock backend for testing.
 
-  The mock backend allows you to configure predetermined responses,
-  making it easy to write deterministic tests for agent behavior.
+  ## Options
 
-  ## Configuration
+  - `:response` - Response text (default: "Mock response")
+  - `:stream_chunks` - List of chunks for streaming
+  - `:error` - Return this error instead of response
+  - `:finish_reason` - Finish reason (default: `:stop`)
+  - `:tool_calls` - Tool calls to include
+  - `:delay` - Delay in milliseconds
 
-  Options are passed as the second element of the backend tuple:
+  ## Example
 
-  - `:response` - The response to return (default: "Mock response")
-  - `:stream_chunks` - List of chunks for streaming (default: splits response)
-  - `:delay` - Optional delay in milliseconds before responding
-  - `:error` - If set, returns this error instead of a response
-  - `:finish_reason` - The finish reason to return (default: :stop)
-  - `:tool_calls` - List of tool calls to include in response
-
-  ## Examples
-
-      # Simple mock response
-      agent = Puck.Agent.new({:mock, response: "Hello from mock!"})
-
-      # Simulate an error
-      agent = Puck.Agent.new({:mock, error: :rate_limited})
-
-      # Simulate a tool call
-      agent = Puck.Agent.new({:mock,
-        finish_reason: :tool_use,
-        tool_calls: [%{id: "1", name: "search", arguments: %{query: "test"}}]
-      })
-
-      # With system prompt
-      agent = Puck.Agent.new({:mock, response: "I'm helpful!"},
-        system_prompt: "You are a helpful assistant."
-      )
+      client = Puck.Client.new({Puck.Backends.Mock, response: "Hello!"})
+      client = Puck.Client.new({Puck.Backends.Mock, error: :rate_limited})
 
   """
 

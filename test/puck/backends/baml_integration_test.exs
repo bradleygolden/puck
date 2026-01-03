@@ -32,13 +32,13 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     describe "Puck BAML backend integration" do
       test "call/2 with :baml backend executes BAML function" do
-        agent =
-          Puck.Agent.new(
+        client =
+          Puck.Client.new(
             {Puck.Backends.Baml, function: "Summarize", path: "test/support/baml_src"}
           )
 
         {:ok, response, _ctx} =
-          Puck.call(agent, "The quick brown fox jumps over the lazy dog.")
+          Puck.call(client, "The quick brown fox jumps over the lazy dog.")
 
         assert response.content != nil
         assert is_binary(response.content)

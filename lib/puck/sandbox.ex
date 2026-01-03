@@ -1,32 +1,36 @@
 defmodule Puck.Sandbox do
   @moduledoc """
-  Minimal sandbox management library for isolated code execution.
+  Sandbox management for isolated code execution.
 
-  Puck.Sandbox provides a simple, struct-based API for creating and managing
+  Puck.Sandbox provides a struct-based API for creating and managing
   sandboxed execution environments. Inspired by E2B's simplicity and Modal's
   `from_id` pattern.
 
+  Note: Sandbox functionality is a work in progress. Currently only the Test
+  adapter is shipped. Docker and Fly adapters are planned but not yet implemented.
+
   ## Usage
 
-      alias Puck.Sandbox.Adapters.Docker
+      alias Puck.Sandbox
+      alias Puck.Sandbox.Adapters.Test
 
       # Create a sandbox
-      {:ok, sandbox} = Puck.Sandbox.create({Docker, image: "node:22-slim"})
+      {:ok, sandbox} = Sandbox.create({Test, image: "node:22-slim"})
 
       # Execute commands
-      {:ok, result} = Puck.Sandbox.exec(sandbox, "node --version")
+      {:ok, result} = Sandbox.exec(sandbox, "node --version")
       IO.puts(result.stdout)
 
       # Cleanup
-      :ok = Puck.Sandbox.terminate(sandbox)
+      :ok = Sandbox.terminate(sandbox)
 
   ## Adapters
 
   Puck.Sandbox uses an adapter pattern for different backends:
 
-  - `Puck.Sandbox.Adapters.Docker` - Docker containers (local development)
-  - `Puck.Sandbox.Adapters.Fly` - Fly.io Machines (production)
-  - `Puck.Sandbox.Adapters.Test` - In-memory testing adapter
+  - `Puck.Sandbox.Adapters.Test` - In-memory testing adapter (shipped)
+  - Docker adapter - Planned
+  - Fly.io Machines adapter - Planned
 
   Custom adapters can be created by implementing the `Puck.Sandbox.Adapter` behaviour.
   """

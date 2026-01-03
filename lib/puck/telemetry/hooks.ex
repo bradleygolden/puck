@@ -8,16 +8,16 @@ if Code.ensure_loaded?(:telemetry) do
 
     ## Usage
 
-        # Agent-level hooks
-        agent = Puck.Agent.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+        # Client-level hooks
+        client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
           hooks: Puck.Telemetry.Hooks
         )
 
         # Per-call hooks
-        Puck.call(agent, "Hello", context, hooks: Puck.Telemetry.Hooks)
+        Puck.call(client, "Hello", context, hooks: Puck.Telemetry.Hooks)
 
         # Combined with other hooks
-        Puck.call(agent, "Hello", context,
+        Puck.call(client, "Hello", context,
           hooks: [Puck.Telemetry.Hooks, MyApp.CustomHooks]
         )
 

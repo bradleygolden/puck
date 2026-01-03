@@ -2,7 +2,7 @@ if Code.ensure_loaded?(:telemetry) do
   defmodule Puck.TelemetryTest do
     use ExUnit.Case, async: false
 
-    alias Puck.{Agent, Context}
+    alias Puck.{Client, Context}
 
     defmodule EventTracker do
       def start do
@@ -49,12 +49,12 @@ if Code.ensure_loaded?(:telemetry) do
       end
 
       test "emits call lifecycle events" do
-        agent =
-          Agent.new({Puck.Backends.Mock, response: "Hello!"}, hooks: Puck.Telemetry.Hooks)
+        client =
+          Client.new({Puck.Backends.Mock, response: "Hello!"}, hooks: Puck.Telemetry.Hooks)
 
         context = Context.new()
 
-        {:ok, _response, _context} = Puck.call(agent, "Hi!", context)
+        {:ok, _response, _context} = Puck.call(client, "Hi!", context)
 
         assert EventTracker.has_event?([:puck, :call, :start])
         assert EventTracker.has_event?([:puck, :backend, :request])
@@ -63,26 +63,26 @@ if Code.ensure_loaded?(:telemetry) do
       end
 
       test "emits call error event on failure" do
-        agent =
-          Agent.new({Puck.Backends.Mock, error: :rate_limited}, hooks: Puck.Telemetry.Hooks)
+        client =
+          Client.new({Puck.Backends.Mock, error: :rate_limited}, hooks: Puck.Telemetry.Hooks)
 
         context = Context.new()
 
-        {:error, :rate_limited} = Puck.call(agent, "Hi!", context)
+        {:error, :rate_limited} = Puck.call(client, "Hi!", context)
 
         assert EventTracker.has_event?([:puck, :call, :start])
         assert EventTracker.has_event?([:puck, :call, :error])
       end
 
       test "emits stream lifecycle events" do
-        agent =
-          Agent.new({Puck.Backends.Mock, stream_chunks: ["Hello", " ", "world"]},
+        client =
+          Client.new({Puck.Backends.Mock, stream_chunks: ["Hello", " ", "world"]},
             hooks: Puck.Telemetry.Hooks
           )
 
         context = Context.new()
 
-        {:ok, stream, _context} = Puck.stream(agent, "Hi!", context)
+        {:ok, stream, _context} = Puck.stream(client, "Hi!", context)
 
         assert EventTracker.has_event?([:puck, :stream, :start])
         assert EventTracker.has_event?([:puck, :backend, :request])

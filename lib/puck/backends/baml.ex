@@ -1,6 +1,31 @@
 if Code.ensure_loaded?(BamlElixir.Client) do
   defmodule Puck.Backends.Baml do
-    @moduledoc false
+    @moduledoc """
+    Backend implementation using BAML for structured outputs.
+
+    BAML provides type-safe structured outputs and is well-suited for building
+    agentic loops. See the [BAML documentation](https://docs.boundaryml.com/)
+    for details on defining functions and building agentic patterns.
+
+    ## Configuration
+
+    - `:function` - (required) The BAML function name to call
+    - `:args` - Custom arguments map or function
+    - `:args_format` - How to build args: `:auto`, `:messages`, `:text`, or `:raw`
+
+    ## Examples
+
+        # Basic usage
+        client = Puck.Client.new({Puck.Backends.Baml, function: "ExtractPerson"})
+        {:ok, result, _ctx} = Puck.call(client, "John is 30 years old")
+
+        # With custom args
+        client = Puck.Client.new({Puck.Backends.Baml,
+          function: "ClassifyIntent",
+          args: %{categories: ["question", "statement", "command"]}
+        })
+
+    """
 
     @behaviour Puck.Backend
 
