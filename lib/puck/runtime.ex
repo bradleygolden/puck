@@ -1,7 +1,7 @@
 defmodule Puck.Runtime do
   @moduledoc false
 
-  alias Puck.{Client, Context, Hooks, Message, Response}
+  alias Puck.{Client, Context, Error, Hooks, Message, Response}
 
   @doc """
   Executes a synchronous call to a client.
@@ -32,11 +32,13 @@ defmodule Puck.Runtime do
     call_opts = [output_schema: output_schema, backend_opts: backend_opts]
 
     with {:cont, transformed_content} <-
-           Hooks.invoke(hooks, :on_call_start, [client, content, context], content),
+           Hooks.invoke(hooks, :on_call_start, [client, content, context], content)
+           |> wrap_hook_error(:on_call_start),
          {:ok, response, updated_context} <-
            do_call(client, transformed_content, context, hooks, call_opts),
          {:cont, final_response} <-
-           Hooks.invoke(hooks, :on_call_end, [client, response, updated_context], response) do
+           Hooks.invoke(hooks, :on_call_end, [client, response, updated_context], response)
+           |> wrap_hook_error(:on_call_end) do
       {:ok, final_response, updated_context}
     else
       {:halt, response} ->
@@ -83,7 +85,7 @@ defmodule Puck.Runtime do
         do_stream(client, transformed_content, context, hooks, stream_opts)
 
       {:error, reason} ->
-        {:error, reason}
+        {:error, Error.wrap_hook(:on_stream_start, reason)}
     end
   end
 
@@ -95,10 +97,14 @@ defmodule Puck.Runtime do
     config = build_backend_config(client)
 
     with {:cont, transformed_messages} <-
-           Hooks.invoke(hooks, :on_backend_request, [config, messages], messages),
-         {:ok, response} <- backend_module.call(config, transformed_messages, opts),
+           Hooks.invoke(hooks, :on_backend_request, [config, messages], messages)
+           |> wrap_hook_error(:on_backend_request),
+         {:ok, response} <-
+           backend_module.call(config, transformed_messages, opts)
+           |> wrap_backend_error(backend_module),
          {:cont, transformed_response} <-
-           Hooks.invoke(hooks, :on_backend_response, [config, response], response) do
+           Hooks.invoke(hooks, :on_backend_response, [config, response], response)
+           |> wrap_hook_error(:on_backend_response) do
       updated_context = add_exchange_to_context(context, content, transformed_response)
       {:ok, transformed_response, updated_context}
     else
@@ -117,14 +123,17 @@ defmodule Puck.Runtime do
     config = build_backend_config(client)
 
     with {:cont, transformed_messages} <-
-           Hooks.invoke(hooks, :on_backend_request, [config, messages], messages),
-         {:ok, stream} <- backend_module.stream(config, transformed_messages, opts) do
+           Hooks.invoke(hooks, :on_backend_request, [config, messages], messages)
+           |> wrap_hook_error(:on_backend_request),
+         {:ok, stream} <-
+           backend_module.stream(config, transformed_messages, opts)
+           |> wrap_backend_error(backend_module) do
       instrumented_stream = instrument_stream(stream, client, context, hooks)
       updated_context = Context.add_message(context, :user, content)
       {:ok, instrumented_stream, updated_context}
     else
       {:halt, _response} ->
-        {:error, :stream_halted_by_hook}
+        {:error, {:stream, :halted_by_hook}}
 
       {:error, reason} ->
         {:error, reason}
@@ -166,4 +175,18 @@ defmodule Puck.Runtime do
     {_type, backend_config} = client.backend
     backend_config
   end
+
+  # Error wrapping helpers
+
+  defp wrap_hook_error({:error, reason}, callback) do
+    {:error, Error.wrap_hook(callback, reason)}
+  end
+
+  defp wrap_hook_error(result, _callback), do: result
+
+  defp wrap_backend_error({:error, reason}, backend_module) do
+    {:error, Error.wrap_backend(backend_module, reason)}
+  end
+
+  defp wrap_backend_error(result, _backend_module), do: result
 end

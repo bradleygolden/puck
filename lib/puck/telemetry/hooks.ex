@@ -151,7 +151,20 @@ if Code.ensure_loaded?(:telemetry) do
     end
 
     defp normalize_error(reason) do
-      {:error, reason, []}
+      # Build structured error info if available
+      error_info =
+        if Puck.Error.structured?(reason) do
+          %{
+            reason: reason,
+            stage: Puck.Error.stage(reason),
+            underlying_reason: Puck.Error.reason(reason),
+            message: Puck.Error.message(reason)
+          }
+        else
+          reason
+        end
+
+      {:error, error_info, []}
     end
   end
 end

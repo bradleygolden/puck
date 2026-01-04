@@ -244,10 +244,12 @@ defmodule Puck.HooksTest do
       client = Client.new({Puck.Backends.Mock, error: :rate_limited}, hooks: TrackingHooks)
       context = Context.new()
 
-      {:error, :rate_limited} = Puck.call(client, "Hi!", context)
+      {:error, {:backend, Puck.Backends.Mock, :rate_limited}} = Puck.call(client, "Hi!", context)
 
       assert_received {:hook, :on_call_start, ^client, "Hi!", ^context}
-      assert_received {:hook, :on_call_error, ^client, :rate_limited, ^context}
+
+      assert_received {:hook, :on_call_error, ^client,
+                       {:backend, Puck.Backends.Mock, :rate_limited}, ^context}
     end
 
     test "per-call hooks override client hooks" do
@@ -285,7 +287,8 @@ defmodule Puck.HooksTest do
 
       context = Context.new()
 
-      {:error, :blocked_by_guardrails} = Puck.call(client, "Hi!", context)
+      {:error, {:hook, :on_call_start, :blocked_by_guardrails}} =
+        Puck.call(client, "Hi!", context)
     end
 
     test "transforms content and response" do

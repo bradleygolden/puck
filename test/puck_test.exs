@@ -45,7 +45,8 @@ defmodule PuckTest do
       client = Client.new({Puck.Backends.Mock, error: :rate_limited})
       context = Context.new()
 
-      assert {:error, :rate_limited} = Puck.call(client, "Hello!", context)
+      assert {:error, {:backend, Puck.Backends.Mock, :rate_limited}} =
+               Puck.call(client, "Hello!", context)
     end
 
     test "accepts multi-modal content" do
@@ -85,7 +86,8 @@ defmodule PuckTest do
       client = Client.new({Puck.Backends.Mock, error: :connection_failed})
       context = Context.new()
 
-      assert {:error, :connection_failed} = Puck.stream(client, "Hello!", context)
+      assert {:error, {:backend, Puck.Backends.Mock, :connection_failed}} =
+               Puck.stream(client, "Hello!", context)
     end
   end
 
