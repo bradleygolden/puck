@@ -71,7 +71,7 @@ if Code.ensure_loaded?(ReqLLM) do
       end
     end
 
-    defp to_llm_schema(%Zoi.Types.Struct{fields: fields}), do: Zoi.object(fields)
+    defp to_llm_schema(%Zoi.Types.Struct{fields: fields}), do: Zoi.object(fields, strict: true)
 
     defp to_llm_schema(%Zoi.Types.Union{schemas: schemas} = union) do
       converted_schemas = Enum.map(schemas, &to_llm_schema/1)

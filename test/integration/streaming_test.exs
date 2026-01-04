@@ -5,10 +5,10 @@ defmodule Puck.Integration.StreamingTest do
 
   use Puck.IntegrationCase
 
-  setup :check_ollama_available!
-
   describe "BAML streaming" do
     @describetag :baml
+
+    setup :check_ollama_available!
 
     setup do
       client =
@@ -46,6 +46,49 @@ defmodule Puck.Integration.StreamingTest do
 
       assert is_binary(final_chunk.content)
       assert final_chunk.content != ""
+    end
+  end
+
+  describe "ReqLLM streaming" do
+    @describetag :req_llm
+
+    setup do
+      client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-haiku-4-5-20251001"})
+      [client: client]
+    end
+
+    @tag timeout: 60_000
+    test "streams chunks", %{client: client} do
+      {:ok, stream, _ctx} =
+        Puck.stream(
+          client,
+          "Summarize in one sentence: Elixir is a dynamic, functional language.",
+          Puck.Context.new()
+        )
+
+      chunks = Enum.to_list(stream)
+
+      assert chunks != []
+
+      Enum.each(chunks, fn chunk ->
+        assert Map.has_key?(chunk, :content)
+      end)
+    end
+
+    @tag timeout: 60_000
+    test "can collect streamed content", %{client: client} do
+      {:ok, stream, _ctx} =
+        Puck.stream(
+          client,
+          "Summarize in one sentence: LiveView enables real-time web apps.",
+          Puck.Context.new()
+        )
+
+      chunks = Enum.to_list(stream)
+      full_content = Enum.map_join(chunks, "", & &1.content)
+
+      assert is_binary(full_content)
+      assert full_content != ""
     end
   end
 end

@@ -21,3 +21,7 @@ puck-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Environment variables (API keys, secrets)
+.env
+.env.*
