@@ -1,6 +1,92 @@
 # Puck
 
-An Elixir framework for building LLM-powered applications with support for multiple backends, sandboxed execution, and structured outputs.
+Build LLM agents in Elixir. No magic. Just loops.
+
+The best AI agents shipped to production share a secret: they're just LLMs calling tools in a loop. Puck gives you the primitives to build exactly that — with any provider, any model, full observability.
+
+## Philosophy
+
+Most LLM frameworks add complexity you don't need. Puck takes a different approach:
+
+- **Agents are loops** — An LLM, tools, and a feedback loop. That's it.
+- **No hard-coded orchestration** — You control the flow, not the framework.
+- **Swap providers** — Anthropic to OpenAI to Bedrock
+- **Observe everything** — Lifecycle hooks for caching, guardrails, logging.
+
+## Quick Start
+
+Three lines to your first LLM call:
+
+```elixir
+client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
+{:ok, response, _ctx} = Puck.call(client, "Hello!")
+IO.puts(response.content)
+```
+
+### Structured Outputs
+
+Define action structs. Create a union schema. Pattern match on the struct type:
+
+```elixir
+# Each action is its own struct with a `type` discriminator
+defmodule LookupContact do
+  defstruct type: "lookup_contact", name: nil
+end
+
+defmodule CreateTask do
+  defstruct type: "create_task", title: nil, due_date: nil
+end
+
+defmodule Done do
+  defstruct type: "done", message: nil
+end
+
+# Build a union schema with literal type discriminators
+def schema do
+  Zoi.union([
+    Zoi.struct(LookupContact, %{
+      type: Zoi.literal("lookup_contact"),
+      name: Zoi.string(description: "Contact name to find")
+    }, coerce: true),
+    Zoi.struct(CreateTask, %{
+      type: Zoi.literal("create_task"),
+      title: Zoi.string(description: "Task title"),
+      due_date: Zoi.string(description: "Due date")
+    }, coerce: true),
+    Zoi.struct(Done, %{
+      type: Zoi.literal("done"),
+      message: Zoi.string(description: "Final response to user")
+    }, coerce: true)
+  ])
+end
+```
+
+### Build an Agent Loop
+
+```elixir
+defp loop(client, input, ctx) do
+  {:ok, %{content: action}, ctx} = Puck.call(client, input, ctx, output_schema: schema())
+
+  case action do
+    %Done{message: msg}        -> {:ok, msg}
+    %LookupContact{name: name} -> loop(client, CRM.find(name), ctx)
+    %CreateTask{} = task       -> loop(client, CRM.create(task), ctx)
+  end
+end
+```
+
+That's it. Pattern match on struct types. Works with any backend.
+
+## Features
+
+- **Any provider, one interface** — Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock via ReqLLM
+- **Real-time streaming** — Stream tokens as they arrive
+- **Multi-modal** — Text, images, files, audio, video
+- **You build the loop** — Response-driven control flow, not framework magic
+- **Types, not strings** — Structured outputs via ReqLLM and BAML
+- **Observe everything** — Lifecycle hooks for caching, guardrails, logging
+- **Sandboxed execution** — Run LLM-generated code safely (work in progress)
+- **Telemetry built-in** — Full observability with `:telemetry` events
 
 ## Installation
 
@@ -33,27 +119,7 @@ def deps do
 end
 ```
 
-## Features
-
-- **Multiple LLM Providers**: Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock, and more via ReqLLM
-- **Multi-modal Content**: Text, images, files, audio, and video support
-- **Streaming**: Real-time response streaming
-- **Agentic Loop Support**: Build autonomous agents with response-driven control flow
-- **Structured Outputs**: Type-safe responses via ReqLLM and BAML
-- **Lifecycle Hooks**: Observe and transform at each stage (caching, guardrails, logging)
-- **Sandboxed Execution**: Run code in isolated environments (work in progress)
-- **Telemetry Integration**: Built-in observability with `:telemetry` events
-
-## Quick Start
-
-### Simple Call
-
-```elixir
-# Requires :req_llm dependency
-client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
-{:ok, response, _ctx} = Puck.call(client, "Hello!")
-IO.puts(response.content)
-```
+## More Examples
 
 ### With System Prompt
 
@@ -155,7 +221,7 @@ client = Puck.Client.new({Puck.Backends.Mock, response: "Test response"})
 
 ## Lifecycle Hooks
 
-Hooks enable middleware patterns for caching, logging, guardrails, and transformation:
+Hooks let you observe and transform at every stage — without touching business logic:
 
 ```elixir
 defmodule MyApp.LoggingHooks do
@@ -181,11 +247,11 @@ client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
 ```
 
 Available hooks:
-- `on_call_start/3` - Before LLM call (can transform content or halt)
-- `on_call_end/3` - After successful call (can transform response)
-- `on_call_error/3` - On call failure
-- `on_stream_start/3`, `on_stream_chunk/3`, `on_stream_end/2` - Stream lifecycle
-- `on_backend_request/2`, `on_backend_response/2` - Backend request/response
+- `on_call_start/3` — Before LLM call (can transform content or halt)
+- `on_call_end/3` — After successful call (can transform response)
+- `on_call_error/3` — On call failure
+- `on_stream_start/3`, `on_stream_chunk/3`, `on_stream_end/2` — Stream lifecycle
+- `on_backend_request/2`, `on_backend_response/2` — Backend request/response
 
 ## Sandboxes
 
@@ -203,7 +269,7 @@ IO.puts(result.stdout)
 
 ## Telemetry
 
-Enable telemetry hooks for observability:
+Enable telemetry hooks for full observability:
 
 ```elixir
 client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
