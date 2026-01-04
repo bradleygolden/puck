@@ -26,62 +26,62 @@ if Code.ensure_loaded?(:telemetry) do
     @behaviour Puck.Hooks
 
     @impl true
-    def on_call_start(agent, prompt, context) do
+    def on_call_start(client, prompt, context) do
       :telemetry.execute(
         [:puck, :call, :start],
         %{system_time: System.system_time()},
-        %{agent: agent, prompt: prompt, context: context}
+        %{client: client, prompt: prompt, context: context}
       )
 
       {:cont, prompt}
     end
 
     @impl true
-    def on_call_end(agent, response, context) do
+    def on_call_end(client, response, context) do
       :telemetry.execute(
         [:puck, :call, :stop],
         %{system_time: System.system_time()},
-        %{agent: agent, response: response, context: context}
+        %{client: client, response: response, context: context}
       )
 
       {:cont, response}
     end
 
     @impl true
-    def on_call_error(agent, error, context) do
+    def on_call_error(client, error, context) do
       :telemetry.execute(
         [:puck, :call, :error],
         %{system_time: System.system_time()},
-        %{agent: agent, error: error, context: context}
+        %{client: client, error: error, context: context}
       )
     end
 
     @impl true
-    def on_stream_start(agent, prompt, context) do
+    def on_stream_start(client, prompt, context) do
       :telemetry.execute(
         [:puck, :stream, :start],
         %{system_time: System.system_time()},
-        %{agent: agent, prompt: prompt, context: context}
+        %{client: client, prompt: prompt, context: context}
       )
 
       {:cont, prompt}
     end
 
     @impl true
-    def on_stream_chunk(agent, chunk, context) do
+    def on_stream_chunk(client, chunk, context) do
       :telemetry.execute(
         [:puck, :stream, :chunk],
         %{},
-        %{agent: agent, chunk: chunk, context: context}
+        %{client: client, chunk: chunk, context: context}
       )
     end
 
     @impl true
-    def on_stream_end(agent, context) do
+    def on_stream_end(client, context) do
       :telemetry.execute(
         [:puck, :stream, :stop],
         %{system_time: System.system_time()},
-        %{agent: agent, context: context}
+        %{client: client, context: context}
       )
     end
 

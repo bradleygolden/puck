@@ -20,10 +20,11 @@ defmodule Puck.Content do
       Content.file(pdf_bytes, "application/pdf", filename: "report.pdf")
 
       # Multi-modal call
-      {:ok, response, _ctx} = Puck.call([
+      client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
+      {:ok, response, _ctx} = Puck.call(client, [
         Content.text("Describe this"),
         Content.image_url("https://example.com/photo.png")
-      ], model: "anthropic:claude-sonnet-4-5")
+      ])
 
   """
 

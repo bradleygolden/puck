@@ -27,7 +27,8 @@ def deps do
 
     # Optional features
     {:solid, "~> 0.15"},        # Liquid template syntax
-    {:telemetry, "~> 1.2"}      # Observability
+    {:telemetry, "~> 1.2"},     # Observability
+    {:zoi, "~> 0.7"}            # Schema validation for structured outputs
   ]
 end
 ```

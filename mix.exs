@@ -87,7 +87,7 @@ defmodule Puck.MixProject do
       groups_for_modules: [
         Core: [
           Puck,
-          Puck.Agent,
+          Puck.Client,
           Puck.Context,
           Puck.Message,
           Puck.Response,
