@@ -61,6 +61,8 @@ def schema do
 end
 ```
 
+> **Note:** `coerce: true` is required because LLM backends return raw maps. This option tells Zoi to convert the map into your struct.
+
 ### Build an Agent Loop
 
 ```elixir
