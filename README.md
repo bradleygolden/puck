@@ -97,7 +97,7 @@ Add `puck` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:puck, github: "bradleygolden/puck"}
+    {:puck, "~> 0.1.0"}
   ]
 end
 ```
@@ -107,7 +107,7 @@ Most features require optional dependencies. Add only what you need:
 ```elixir
 def deps do
   [
-    {:puck, github: "bradleygolden/puck"},
+    {:puck, "~> 0.1.0"},
 
     # LLM backends (pick one or more)
     {:req_llm, "~> 1.0"},       # Multi-provider LLM support
