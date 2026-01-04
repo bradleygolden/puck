@@ -24,6 +24,10 @@ if Code.ensure_loaded?(:telemetry) do
       def has_event?(event_name) do
         events() |> Enum.any?(fn {event, _, _} -> event == event_name end)
       end
+
+      def get_event(event_name) do
+        events() |> Enum.find(fn {event, _, _} -> event == event_name end)
+      end
     end
 
     describe "Puck.Telemetry.Hooks" do
@@ -48,7 +52,7 @@ if Code.ensure_loaded?(:telemetry) do
         :ok
       end
 
-      test "emits call lifecycle events" do
+      test "emits call lifecycle events with duration" do
         client =
           Client.new({Puck.Backends.Mock, response: "Hello!"}, hooks: Puck.Telemetry.Hooks)
 
@@ -60,9 +64,14 @@ if Code.ensure_loaded?(:telemetry) do
         assert EventTracker.has_event?([:puck, :backend, :request])
         assert EventTracker.has_event?([:puck, :backend, :response])
         assert EventTracker.has_event?([:puck, :call, :stop])
+
+        # Check that stop event includes duration measurement
+        {_event, measurements, _metadata} = EventTracker.get_event([:puck, :call, :stop])
+        assert is_integer(measurements.duration)
+        assert measurements.duration >= 0
       end
 
-      test "emits call error event on failure" do
+      test "emits call exception event on failure with metadata" do
         client =
           Client.new({Puck.Backends.Mock, error: :rate_limited}, hooks: Puck.Telemetry.Hooks)
 
@@ -71,10 +80,17 @@ if Code.ensure_loaded?(:telemetry) do
         {:error, :rate_limited} = Puck.call(client, "Hi!", context)
 
         assert EventTracker.has_event?([:puck, :call, :start])
-        assert EventTracker.has_event?([:puck, :call, :error])
+        assert EventTracker.has_event?([:puck, :call, :exception])
+
+        # Check exception event has proper measurements and metadata
+        {_event, measurements, metadata} = EventTracker.get_event([:puck, :call, :exception])
+        assert is_integer(measurements.duration)
+        assert metadata.kind == :error
+        assert metadata.reason == :rate_limited
+        assert is_list(metadata.stacktrace)
       end
 
-      test "emits stream lifecycle events" do
+      test "emits stream lifecycle events with duration" do
         client =
           Client.new({Puck.Backends.Mock, stream_chunks: ["Hello", " ", "world"]},
             hooks: Puck.Telemetry.Hooks
@@ -91,6 +107,11 @@ if Code.ensure_loaded?(:telemetry) do
 
         assert EventTracker.has_event?([:puck, :stream, :chunk])
         assert EventTracker.has_event?([:puck, :stream, :stop])
+
+        # Check that stop event includes duration measurement
+        {_event, measurements, _metadata} = EventTracker.get_event([:puck, :stream, :stop])
+        assert is_integer(measurements.duration)
+        assert measurements.duration >= 0
       end
     end
 
@@ -100,7 +121,7 @@ if Code.ensure_loaded?(:telemetry) do
 
         assert [:puck, :call, :start] in names
         assert [:puck, :call, :stop] in names
-        assert [:puck, :call, :error] in names
+        assert [:puck, :call, :exception] in names
         assert [:puck, :stream, :start] in names
         assert [:puck, :stream, :chunk] in names
         assert [:puck, :stream, :stop] in names

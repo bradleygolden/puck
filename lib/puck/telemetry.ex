@@ -11,9 +11,116 @@ if Code.ensure_loaded?(:telemetry) do
 
     ## Events
 
-    - `[:puck, :call, :start | :stop | :error]`
-    - `[:puck, :stream, :start | :chunk | :stop]`
-    - `[:puck, :backend, :request | :response]`
+    ### Call Start
+
+    `[:puck, :call, :start]` - Executed before the LLM call.
+
+    #### Measurements
+
+      * `:system_time` - The system time in native units.
+
+    #### Metadata
+
+      * `:client` - The `Puck.Client` struct.
+      * `:prompt` - The prompt content.
+      * `:context` - The `Puck.Context` struct.
+
+    ### Call Stop
+
+    `[:puck, :call, :stop]` - Executed after a successful LLM call.
+
+    #### Measurements
+
+      * `:duration` - Time taken in native units.
+
+    #### Metadata
+
+      * `:client` - The `Puck.Client` struct.
+      * `:response` - The `Puck.Response` struct.
+      * `:context` - The `Puck.Context` struct.
+
+    ### Call Exception
+
+    `[:puck, :call, :exception]` - Executed when the call fails.
+
+    #### Measurements
+
+      * `:duration` - Time taken before failure in native units.
+
+    #### Metadata
+
+      * `:client` - The `Puck.Client` struct.
+      * `:context` - The `Puck.Context` struct.
+      * `:kind` - The exception type (`:error`, `:exit`, or `:throw`).
+      * `:reason` - The error reason.
+      * `:stacktrace` - The stacktrace (may be empty).
+
+    ### Stream Start
+
+    `[:puck, :stream, :start]` - Executed before streaming begins.
+
+    #### Measurements
+
+      * `:system_time` - The system time in native units.
+
+    #### Metadata
+
+      * `:client` - The `Puck.Client` struct.
+      * `:prompt` - The prompt content.
+      * `:context` - The `Puck.Context` struct.
+
+    ### Stream Chunk
+
+    `[:puck, :stream, :chunk]` - Executed for each streamed chunk.
+
+    #### Measurements
+
+    No measurements.
+
+    #### Metadata
+
+      * `:client` - The `Puck.Client` struct.
+      * `:chunk` - The chunk data.
+      * `:context` - The `Puck.Context` struct.
+
+    ### Stream Stop
+
+    `[:puck, :stream, :stop]` - Executed after streaming completes.
+
+    #### Measurements
+
+      * `:duration` - Time taken in native units.
+
+    #### Metadata
+
+      * `:client` - The `Puck.Client` struct.
+      * `:context` - The `Puck.Context` struct.
+
+    ### Backend Request
+
+    `[:puck, :backend, :request]` - Executed before the backend request.
+
+    #### Measurements
+
+      * `:system_time` - The system time in native units.
+
+    #### Metadata
+
+      * `:config` - The backend configuration.
+      * `:messages` - The messages being sent.
+
+    ### Backend Response
+
+    `[:puck, :backend, :response]` - Executed after the backend response.
+
+    #### Measurements
+
+      * `:system_time` - The system time in native units.
+
+    #### Metadata
+
+      * `:config` - The backend configuration.
+      * `:response` - The backend response.
 
     ## Attaching Handlers
 
@@ -39,7 +146,7 @@ if Code.ensure_loaded?(:telemetry) do
       [
         [:puck, :call, :start],
         [:puck, :call, :stop],
-        [:puck, :call, :error],
+        [:puck, :call, :exception],
         [:puck, :stream, :start],
         [:puck, :stream, :chunk],
         [:puck, :stream, :stop],

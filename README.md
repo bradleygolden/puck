@@ -214,10 +214,21 @@ client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
 Puck.Telemetry.attach_default_logger(level: :info)
 ```
 
-Events emitted:
-- `[:puck, :call, :start]`, `[:puck, :call, :stop]`, `[:puck, :call, :error]`
-- `[:puck, :stream, :start]`, `[:puck, :stream, :chunk]`, `[:puck, :stream, :stop]`
-- `[:puck, :backend, :request]`, `[:puck, :backend, :response]`
+### Events
+
+| Event | Measurements | Description |
+|-------|--------------|-------------|
+| `[:puck, :call, :start]` | `system_time` | Before LLM call |
+| `[:puck, :call, :stop]` | `duration` | After successful call |
+| `[:puck, :call, :exception]` | `duration` | On call failure (includes `kind`, `reason`, `stacktrace` in metadata) |
+| `[:puck, :stream, :start]` | `system_time` | Before streaming begins |
+| `[:puck, :stream, :chunk]` | — | For each streamed chunk |
+| `[:puck, :stream, :stop]` | `duration` | After streaming completes |
+| `[:puck, :backend, :request]` | `system_time` | Before backend request |
+| `[:puck, :backend, :response]` | `system_time` | After backend response |
+
+All events include relevant metadata (client, context, response, etc.). Durations are in native time units.
+See `Puck.Telemetry` module docs for full details.
 
 ## License
 

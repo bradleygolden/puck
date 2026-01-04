@@ -25,8 +25,14 @@ if Code.ensure_loaded?(:telemetry) do
 
     @behaviour Puck.Hooks
 
+    # Process dictionary keys for timing
+    @call_start_time :puck_telemetry_call_start_time
+    @stream_start_time :puck_telemetry_stream_start_time
+
     @impl true
     def on_call_start(client, prompt, context) do
+      Process.put(@call_start_time, System.monotonic_time())
+
       :telemetry.execute(
         [:puck, :call, :start],
         %{system_time: System.system_time()},
@@ -38,9 +44,11 @@ if Code.ensure_loaded?(:telemetry) do
 
     @impl true
     def on_call_end(client, response, context) do
+      duration = calculate_duration(@call_start_time)
+
       :telemetry.execute(
         [:puck, :call, :stop],
-        %{system_time: System.system_time()},
+        %{duration: duration},
         %{client: client, response: response, context: context}
       )
 
@@ -49,15 +57,26 @@ if Code.ensure_loaded?(:telemetry) do
 
     @impl true
     def on_call_error(client, error, context) do
+      duration = calculate_duration(@call_start_time)
+      {kind, reason, stacktrace} = normalize_error(error)
+
       :telemetry.execute(
-        [:puck, :call, :error],
-        %{system_time: System.system_time()},
-        %{client: client, error: error, context: context}
+        [:puck, :call, :exception],
+        %{duration: duration},
+        %{
+          client: client,
+          context: context,
+          kind: kind,
+          reason: reason,
+          stacktrace: stacktrace
+        }
       )
     end
 
     @impl true
     def on_stream_start(client, prompt, context) do
+      Process.put(@stream_start_time, System.monotonic_time())
+
       :telemetry.execute(
         [:puck, :stream, :start],
         %{system_time: System.system_time()},
@@ -78,9 +97,11 @@ if Code.ensure_loaded?(:telemetry) do
 
     @impl true
     def on_stream_end(client, context) do
+      duration = calculate_duration(@stream_start_time)
+
       :telemetry.execute(
         [:puck, :stream, :stop],
-        %{system_time: System.system_time()},
+        %{duration: duration},
         %{client: client, context: context}
       )
     end
@@ -105,6 +126,32 @@ if Code.ensure_loaded?(:telemetry) do
       )
 
       {:cont, response}
+    end
+
+    # Private helpers
+
+    defp calculate_duration(key) do
+      case Process.get(key) do
+        nil ->
+          0
+
+        start_time ->
+          Process.delete(key)
+          System.monotonic_time() - start_time
+      end
+    end
+
+    defp normalize_error(%{__exception__: true} = exception) do
+      {:error, exception, []}
+    end
+
+    defp normalize_error({kind, reason, stacktrace})
+         when kind in [:error, :exit, :throw] do
+      {kind, reason, stacktrace}
+    end
+
+    defp normalize_error(reason) do
+      {:error, reason, []}
     end
   end
 end
