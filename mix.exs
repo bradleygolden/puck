@@ -17,6 +17,7 @@ defmodule Puck.MixProject do
       package: package(),
       docs: docs(),
       aliases: aliases(),
+      dialyzer: dialyzer(),
       name: "Puck",
       source_url: @source_url
     ]
@@ -34,6 +35,12 @@ defmodule Puck.MixProject do
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
+
+  defp dialyzer do
+    [
+      plt_add_apps: [:ex_unit]
+    ]
+  end
 
   defp deps do
     [
@@ -58,7 +65,8 @@ defmodule Puck.MixProject do
         "compile --warnings-as-errors",
         "test --warnings-as-errors",
         "format --check-formatted",
-        "credo --strict"
+        "credo --strict",
+        "dialyzer"
       ]
     ]
   end
