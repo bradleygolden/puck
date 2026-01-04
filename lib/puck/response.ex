@@ -5,9 +5,10 @@ defmodule Puck.Response do
   ## Fields
 
   - `content` - Response content (text or structured data)
+  - `thinking` - Thinking/reasoning content from extended thinking models (nil if not available)
   - `finish_reason` - Why the model stopped (`:stop`, `:tool_use`, `:max_tokens`)
   - `tool_calls` - List of tool calls if `finish_reason` is `:tool_use`
-  - `usage` - Token usage information
+  - `usage` - Token usage information (includes `thinking_tokens` if available)
   - `metadata` - Backend-specific data
 
   ## Agentic Loop Pattern
@@ -29,7 +30,8 @@ defmodule Puck.Response do
   @type usage :: %{
           optional(:input_tokens) => non_neg_integer(),
           optional(:output_tokens) => non_neg_integer(),
-          optional(:total_tokens) => non_neg_integer()
+          optional(:total_tokens) => non_neg_integer(),
+          optional(:thinking_tokens) => non_neg_integer()
         }
 
   @type finish_reason ::
@@ -55,6 +57,7 @@ defmodule Puck.Response do
 
   @type t :: %__MODULE__{
           content: term(),
+          thinking: String.t() | nil,
           tool_calls: [tool_call()],
           finish_reason: finish_reason() | nil,
           usage: usage(),
@@ -62,6 +65,7 @@ defmodule Puck.Response do
         }
 
   defstruct content: nil,
+            thinking: nil,
             tool_calls: [],
             finish_reason: nil,
             usage: %{},
@@ -73,14 +77,14 @@ defmodule Puck.Response do
   ## Examples
 
       iex> Puck.Response.new(content: "Hello!")
-      %Puck.Response{content: "Hello!", tool_calls: [], finish_reason: nil, usage: %{}, metadata: %{}}
+      %Puck.Response{content: "Hello!", thinking: nil, tool_calls: [], finish_reason: nil, usage: %{}, metadata: %{}}
 
       iex> Puck.Response.new(
       ...>   content: nil,
       ...>   finish_reason: :tool_use,
       ...>   tool_calls: [%{id: "1", name: "search", arguments: %{}}]
       ...> )
-      %Puck.Response{content: nil, finish_reason: :tool_use, tool_calls: [%{id: "1", name: "search", arguments: %{}}], usage: %{}, metadata: %{}}
+      %Puck.Response{content: nil, thinking: nil, finish_reason: :tool_use, tool_calls: [%{id: "1", name: "search", arguments: %{}}], usage: %{}, metadata: %{}}
 
   """
   @spec new(keyword()) :: t()
@@ -178,4 +182,24 @@ defmodule Puck.Response do
   @spec text(t()) :: String.t() | nil
   def text(%__MODULE__{content: content}) when is_binary(content), do: content
   def text(%__MODULE__{}), do: nil
+
+  @doc """
+  Gets the thinking/reasoning content from the response.
+
+  Returns the thinking content if available, or nil if the model doesn't support
+  extended thinking or thinking was not enabled.
+
+  ## Examples
+
+      iex> response = Puck.Response.new(thinking: "Let me think about this...")
+      iex> Puck.Response.thinking(response)
+      "Let me think about this..."
+
+      iex> response = Puck.Response.new(content: "Hello!")
+      iex> Puck.Response.thinking(response)
+      nil
+
+  """
+  def thinking(%__MODULE__{thinking: thinking}) when is_binary(thinking), do: thinking
+  def thinking(%__MODULE__{}), do: nil
 end

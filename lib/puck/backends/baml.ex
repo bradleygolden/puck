@@ -157,6 +157,8 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
       Response.new(
         content: content,
+        # BAML does not support thinking/reasoning tokens
+        thinking: nil,
         finish_reason: :stop,
         usage: %{},
         metadata: %{
@@ -205,11 +207,11 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     defp receive_chunks(:streaming, ref) do
       receive do
         {^ref, {:chunk, result}} ->
-          chunk = %{content: result, metadata: %{partial: true}}
+          chunk = %{type: :content, content: result, metadata: %{partial: true, backend: :baml}}
           {[chunk], :streaming}
 
         {^ref, {:done, result}} ->
-          chunk = %{content: result, metadata: %{partial: false}}
+          chunk = %{type: :content, content: result, metadata: %{partial: false, backend: :baml}}
           {[chunk], :done}
 
         {^ref, {:error, reason}} ->

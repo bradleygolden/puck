@@ -89,14 +89,22 @@ if Code.ensure_loaded?(ReqLLM) do
 
       case ReqLLM.stream_text(model, req_messages, options) do
         {:ok, stream_response} ->
-          text_stream =
-            stream_response
-            |> ReqLLM.StreamResponse.tokens()
-            |> Stream.map(fn text ->
-              %{content: text, metadata: %{backend: :req_llm}}
+          chunk_stream =
+            stream_response.stream
+            |> Stream.flat_map(fn chunk ->
+              case chunk.type do
+                :content ->
+                  [%{type: :content, content: chunk.text, metadata: %{backend: :req_llm}}]
+
+                :thinking ->
+                  [%{type: :thinking, content: chunk.text, metadata: %{backend: :req_llm}}]
+
+                _ ->
+                  []
+              end
             end)
 
-          {:ok, text_stream}
+          {:ok, chunk_stream}
 
         {:error, reason} ->
           {:error, reason}
@@ -128,15 +136,17 @@ if Code.ensure_loaded?(ReqLLM) do
 
     defp normalize_response(response, model) do
       content = ReqLLM.Response.text(response)
+      thinking = ReqLLM.Response.thinking(response)
       tool_calls = extract_tool_calls(response)
       usage = ReqLLM.Response.usage(response) || %{}
       finish_reason = ReqLLM.Response.finish_reason(response)
 
       Response.new(
         content: content,
+        thinking: thinking,
         tool_calls: tool_calls,
         finish_reason: normalize_finish_reason(finish_reason),
-        usage: normalize_usage(usage),
+        usage: normalize_usage(usage, response),
         metadata: build_metadata(response, model, finish_reason)
       )
     end
@@ -144,13 +154,15 @@ if Code.ensure_loaded?(ReqLLM) do
     defp normalize_object_response(response, model, output_schema) do
       object = ReqLLM.Response.object(response)
       content = maybe_parse_struct(output_schema, object)
+      thinking = ReqLLM.Response.thinking(response)
       usage = ReqLLM.Response.usage(response) || %{}
       finish_reason = ReqLLM.Response.finish_reason(response)
 
       Response.new(
         content: content,
+        thinking: thinking,
         finish_reason: normalize_finish_reason(finish_reason),
-        usage: normalize_usage(usage),
+        usage: normalize_usage(usage, response),
         metadata: build_metadata(response, model, finish_reason)
       )
     end
@@ -242,14 +254,22 @@ if Code.ensure_loaded?(ReqLLM) do
     defp normalize_finish_reason(:error), do: :error
     defp normalize_finish_reason(nil), do: nil
 
-    defp normalize_usage(usage) when is_map(usage) do
-      %{
+    defp normalize_usage(usage, response) when is_map(usage) do
+      thinking_tokens = ReqLLM.Response.reasoning_tokens(response)
+
+      base = %{
         input_tokens: Map.get(usage, :input_tokens, 0),
         output_tokens: Map.get(usage, :output_tokens, 0)
       }
+
+      if thinking_tokens > 0 do
+        Map.put(base, :thinking_tokens, thinking_tokens)
+      else
+        base
+      end
     end
 
-    defp normalize_usage(_), do: %{}
+    defp normalize_usage(_, _response), do: %{}
 
     # Convert Puck.Message → ReqLLM message format
     # Single text → use plain map with string content (loose map)

@@ -64,4 +64,47 @@ defmodule Puck.ResponseTest do
       assert Response.total_tokens(response) == 30
     end
   end
+
+  describe "thinking/1" do
+    test "returns thinking content when present" do
+      response = Response.new(thinking: "Let me analyze this step by step...")
+
+      assert Response.thinking(response) == "Let me analyze this step by step..."
+    end
+
+    test "returns nil when thinking is nil" do
+      response = Response.new(content: "Hello!")
+
+      assert Response.thinking(response) == nil
+    end
+
+    test "returns empty string when thinking is empty string" do
+      response = Response.new(thinking: "")
+
+      assert Response.thinking(response) == ""
+    end
+  end
+
+  describe "thinking field" do
+    test "defaults to nil" do
+      response = Response.new()
+
+      assert response.thinking == nil
+    end
+
+    test "can be set with content" do
+      response = Response.new(content: "Answer", thinking: "Reasoning process")
+
+      assert response.content == "Answer"
+      assert response.thinking == "Reasoning process"
+    end
+  end
+
+  describe "usage with thinking_tokens" do
+    test "supports thinking_tokens in usage" do
+      response = Response.new(usage: %{input_tokens: 10, output_tokens: 20, thinking_tokens: 100})
+
+      assert response.usage.thinking_tokens == 100
+    end
+  end
 end
