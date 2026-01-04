@@ -72,6 +72,12 @@ if Code.ensure_loaded?(ReqLLM) do
     end
 
     defp to_llm_schema(%Zoi.Types.Struct{fields: fields}), do: Zoi.object(fields)
+
+    defp to_llm_schema(%Zoi.Types.Union{schemas: schemas} = union) do
+      converted_schemas = Enum.map(schemas, &to_llm_schema/1)
+      %{union | schemas: converted_schemas}
+    end
+
     defp to_llm_schema(schema), do: schema
 
     @impl true
@@ -156,6 +162,13 @@ if Code.ensure_loaded?(ReqLLM) do
       end
     end
 
+    defp maybe_parse_struct(%Zoi.Types.Union{} = schema, object) when is_map(object) do
+      case Zoi.parse(schema, object) do
+        {:ok, parsed} -> parsed
+        {:error, _} -> object
+      end
+    end
+
     defp maybe_parse_struct(_schema, object), do: object
 
     defp build_metadata(response, model, raw_finish_reason) do
@@ -176,6 +189,10 @@ if Code.ensure_loaded?(ReqLLM) do
         [provider, model_name] -> {provider, model_name}
         [model_name] -> {"unknown", model_name}
       end
+    end
+
+    defp parse_model_string(%LLMDB.Model{provider: provider, model: model_name}) do
+      {to_string(provider), model_name}
     end
 
     defp extract_tool_calls(response) do
