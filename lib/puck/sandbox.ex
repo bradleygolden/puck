@@ -340,8 +340,6 @@ defmodule Puck.Sandbox do
     The stream yields maps with a `"type"` key indicating the event type:
 
         %{"type" => "text", "text" => "Hello!"}
-        %{"type" => "tool_call", "name" => "run_code", "arguments" => %{...}}
-        %{"type" => "tool_result", "content" => "..."}
         %{"type" => "error", "message" => "..."}
 
     ## Examples

@@ -8,7 +8,6 @@ defmodule Puck.Backends.Mock do
   - `:stream_chunks` - List of chunks for streaming
   - `:error` - Return this error instead of response
   - `:finish_reason` - Finish reason (default: `:stop`)
-  - `:tool_calls` - Tool calls to include
   - `:delay` - Delay in milliseconds
 
   ## Example
@@ -94,7 +93,6 @@ defmodule Puck.Backends.Mock do
     Response.new(
       content: content,
       finish_reason: Map.get(config, :finish_reason, :stop),
-      tool_calls: Map.get(config, :tool_calls, []),
       usage: %{
         input_tokens: 10,
         output_tokens: estimate_tokens(content)

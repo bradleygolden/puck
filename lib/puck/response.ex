@@ -6,26 +6,11 @@ defmodule Puck.Response do
 
   - `content` - Response content (text or structured data)
   - `thinking` - Thinking/reasoning content from extended thinking models (nil if not available)
-  - `finish_reason` - Why the model stopped (`:stop`, `:tool_use`, `:max_tokens`)
-  - `tool_calls` - List of tool calls if `finish_reason` is `:tool_use`
+  - `finish_reason` - Why the model stopped (`:stop`, `:max_tokens`, etc.)
   - `usage` - Token usage information (includes `thinking_tokens` if available)
   - `metadata` - Backend-specific data
 
-  ## Agentic Loop Pattern
-
-      case response.finish_reason do
-        :stop -> {:done, response.content}
-        :tool_use -> {:execute, response.tool_calls}
-        :max_tokens -> {:error, :truncated}
-      end
-
   """
-
-  @type tool_call :: %{
-          id: String.t(),
-          name: String.t(),
-          arguments: map()
-        }
 
   @type usage :: %{
           optional(:input_tokens) => non_neg_integer(),
@@ -36,7 +21,6 @@ defmodule Puck.Response do
 
   @type finish_reason ::
           :stop
-          | :tool_use
           | :max_tokens
           | :content_filter
           | :error
@@ -58,7 +42,6 @@ defmodule Puck.Response do
   @type t :: %__MODULE__{
           content: term(),
           thinking: String.t() | nil,
-          tool_calls: [tool_call()],
           finish_reason: finish_reason() | nil,
           usage: usage(),
           metadata: metadata()
@@ -66,7 +49,6 @@ defmodule Puck.Response do
 
   defstruct content: nil,
             thinking: nil,
-            tool_calls: [],
             finish_reason: nil,
             usage: %{},
             metadata: %{}
@@ -77,38 +59,12 @@ defmodule Puck.Response do
   ## Examples
 
       iex> Puck.Response.new(content: "Hello!")
-      %Puck.Response{content: "Hello!", thinking: nil, tool_calls: [], finish_reason: nil, usage: %{}, metadata: %{}}
-
-      iex> Puck.Response.new(
-      ...>   content: nil,
-      ...>   finish_reason: :tool_use,
-      ...>   tool_calls: [%{id: "1", name: "search", arguments: %{}}]
-      ...> )
-      %Puck.Response{content: nil, thinking: nil, finish_reason: :tool_use, tool_calls: [%{id: "1", name: "search", arguments: %{}}], usage: %{}, metadata: %{}}
+      %Puck.Response{content: "Hello!", thinking: nil, finish_reason: nil, usage: %{}, metadata: %{}}
 
   """
   @spec new(keyword()) :: t()
   def new(attrs \\ []) do
     struct(__MODULE__, attrs)
-  end
-
-  @doc """
-  Returns true if this response contains tool calls.
-
-  ## Examples
-
-      iex> response = Puck.Response.new(tool_calls: [%{id: "1", name: "search", arguments: %{}}])
-      iex> Puck.Response.has_tool_calls?(response)
-      true
-
-      iex> response = Puck.Response.new(content: "Hello!")
-      iex> Puck.Response.has_tool_calls?(response)
-      false
-
-  """
-  @spec has_tool_calls?(t()) :: boolean()
-  def has_tool_calls?(%__MODULE__{tool_calls: tool_calls}) do
-    tool_calls != []
   end
 
   @doc """
@@ -120,7 +76,7 @@ defmodule Puck.Response do
       iex> Puck.Response.complete?(response)
       true
 
-      iex> response = Puck.Response.new(finish_reason: :tool_use)
+      iex> response = Puck.Response.new(finish_reason: :max_tokens)
       iex> Puck.Response.complete?(response)
       false
 

@@ -29,7 +29,7 @@ defmodule Puck do
   - `Puck.Message` - Individual message in a conversation
   - `Puck.Backend` - Behaviour for LLM backend implementations
   - `Puck.Hooks` - Behaviour for lifecycle event hooks
-  - `Puck.Response` - Normalized response struct with content, tool_calls, finish_reason
+  - `Puck.Response` - Normalized response struct with content, finish_reason, usage
 
   ## Optional Packages
 

@@ -10,7 +10,6 @@ defmodule Puck.ResponseTest do
       response = Response.new()
 
       assert response.content == nil
-      assert response.tool_calls == []
       assert response.finish_reason == nil
       assert response.usage == %{}
       assert response.metadata == %{}
@@ -23,20 +22,6 @@ defmodule Puck.ResponseTest do
     end
   end
 
-  describe "has_tool_calls?/1" do
-    test "returns true when tool_calls is non-empty" do
-      response = Response.new(tool_calls: [%{id: "1", name: "search", arguments: %{}}])
-
-      assert Response.has_tool_calls?(response) == true
-    end
-
-    test "returns false when tool_calls is empty" do
-      response = Response.new(content: "Hello!")
-
-      assert Response.has_tool_calls?(response) == false
-    end
-  end
-
   describe "complete?/1" do
     test "returns true for :stop finish_reason" do
       response = Response.new(finish_reason: :stop)
@@ -44,8 +29,8 @@ defmodule Puck.ResponseTest do
       assert Response.complete?(response) == true
     end
 
-    test "returns false for :tool_use finish_reason" do
-      response = Response.new(finish_reason: :tool_use)
+    test "returns false for :max_tokens finish_reason" do
+      response = Response.new(finish_reason: :max_tokens)
 
       assert Response.complete?(response) == false
     end
