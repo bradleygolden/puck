@@ -83,7 +83,7 @@ defmodule Puck.MixProject do
       links: %{
         "GitHub" => @source_url
       },
-      files: ~w(lib LICENSE mix.exs README.md)
+      files: ~w(lib LICENSE mix.exs README.md CHANGELOG.md)
     ]
   end
 
@@ -92,7 +92,7 @@ defmodule Puck.MixProject do
       main: "readme",
       source_ref: "v#{@version}",
       source_url: @source_url,
-      extras: ["README.md"],
+      extras: ["README.md", "CHANGELOG.md"],
       groups_for_modules: [
         Core: [
           Puck,
