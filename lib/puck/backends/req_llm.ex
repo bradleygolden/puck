@@ -83,10 +83,19 @@ if Code.ensure_loaded?(ReqLLM) do
     @impl true
     def stream(config, messages, opts) do
       model = Map.fetch!(config, :model)
+      output_schema = Keyword.get(opts, :output_schema)
       backend_opts = Keyword.get(opts, :backend_opts, [])
       options = build_options(config, backend_opts)
       req_messages = Enum.map(messages, &to_req_llm_message/1)
 
+      if output_schema do
+        stream_with_schema(model, req_messages, output_schema, options)
+      else
+        stream_text(model, req_messages, options)
+      end
+    end
+
+    defp stream_text(model, req_messages, options) do
       case ReqLLM.stream_text(model, req_messages, options) do
         {:ok, stream_response} ->
           chunk_stream =
@@ -108,6 +117,56 @@ if Code.ensure_loaded?(ReqLLM) do
 
         {:error, reason} ->
           {:error, reason}
+      end
+    end
+
+    defp stream_with_schema(model, messages, output_schema, options) do
+      llm_schema = to_llm_schema(output_schema)
+
+      case ReqLLM.stream_object(model, messages, llm_schema, options) do
+        {:ok, stream_response} ->
+          chunk_stream =
+            stream_response.stream
+            |> Stream.transform("", &accumulate_and_parse_json(&1, &2, output_schema))
+
+          {:ok, chunk_stream}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    defp accumulate_and_parse_json(%{type: :content, text: text}, acc, schema) do
+      new_acc = acc <> (text || "")
+
+      case try_parse_json(new_acc) do
+        {:ok, object} ->
+          parsed = maybe_parse_struct(schema, object)
+
+          chunk = %{
+            type: :content,
+            content: parsed,
+            metadata: %{partial: true, backend: :req_llm}
+          }
+
+          {[chunk], new_acc}
+
+        :error ->
+          {[], new_acc}
+      end
+    end
+
+    defp accumulate_and_parse_json(%{type: :thinking, text: text}, acc, _schema) do
+      chunk = %{type: :thinking, content: text, metadata: %{backend: :req_llm}}
+      {[chunk], acc}
+    end
+
+    defp accumulate_and_parse_json(_chunk, acc, _schema), do: {[], acc}
+
+    defp try_parse_json(text) do
+      case Jason.decode(text) do
+        {:ok, object} when is_map(object) -> {:ok, object}
+        _ -> :error
       end
     end
 

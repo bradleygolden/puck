@@ -74,9 +74,10 @@ defmodule Puck.Runtime do
           {:ok, Enumerable.t(), Context.t()} | {:error, term()}
   def stream(%Client{} = client, content, %Context{} = context, opts \\ []) do
     {hooks_opt, opts} = Keyword.pop(opts, :hooks)
+    {output_schema, opts} = Keyword.pop(opts, :output_schema)
     {backend_opts, _rest} = Keyword.pop(opts, :backend_opts, [])
     hooks = Hooks.merge(client.hooks, hooks_opt)
-    stream_opts = [backend_opts: backend_opts]
+    stream_opts = [output_schema: output_schema, backend_opts: backend_opts]
 
     case Hooks.invoke(hooks, :on_stream_start, [client, content, context], content) do
       {:cont, transformed_content} ->

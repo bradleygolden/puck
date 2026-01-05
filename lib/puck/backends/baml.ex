@@ -52,15 +52,16 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     def stream(config, messages, opts) do
       function_name = Map.fetch!(config, :function)
       args = build_args(messages, config)
+      output_schema = Keyword.get(opts, :output_schema)
       backend_opts = Keyword.get(opts, :backend_opts, [])
-      baml_opts = build_baml_opts(config, nil, backend_opts)
+      baml_opts = build_baml_opts(config, output_schema, backend_opts)
       caller = self()
       ref = make_ref()
 
       stream =
         Stream.resource(
           fn -> start_stream(caller, ref, function_name, args, baml_opts) end,
-          fn state -> receive_chunks(state, ref) end,
+          fn state -> receive_chunks(state, ref, output_schema) end,
           fn _state -> :ok end
         )
 
@@ -200,18 +201,20 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       :streaming
     end
 
-    defp receive_chunks(:done, _ref) do
+    defp receive_chunks(:done, _ref, _output_schema) do
       {:halt, :done}
     end
 
-    defp receive_chunks(:streaming, ref) do
+    defp receive_chunks(:streaming, ref, output_schema) do
       receive do
         {^ref, {:chunk, result}} ->
-          chunk = %{type: :content, content: result, metadata: %{partial: true, backend: :baml}}
+          parsed = maybe_parse_schema(output_schema, result)
+          chunk = %{type: :content, content: parsed, metadata: %{partial: true, backend: :baml}}
           {[chunk], :streaming}
 
         {^ref, {:done, result}} ->
-          chunk = %{type: :content, content: result, metadata: %{partial: false, backend: :baml}}
+          parsed = maybe_parse_schema(output_schema, result)
+          chunk = %{type: :content, content: parsed, metadata: %{partial: false, backend: :baml}}
           {[chunk], :done}
 
         {^ref, {:error, reason}} ->

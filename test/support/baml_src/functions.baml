@@ -1,12 +1,13 @@
 class Person {
   name string
   age int?
+  occupation string?
 }
 
 function ExtractPerson(text: string) -> Person {
   client Ollama
   prompt #"
-    Extract the person's name and age from this text.
+    Extract the person's name, age, and occupation from this text.
     {{ ctx.output_format }}
 
     ---

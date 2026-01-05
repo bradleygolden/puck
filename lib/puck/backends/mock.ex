@@ -33,22 +33,46 @@ defmodule Puck.Backends.Mock do
   end
 
   @impl true
-  def stream(config, _messages, _opts) do
+  def stream(config, _messages, opts) do
     maybe_delay(config)
 
     case Map.get(config, :error) do
       nil ->
+        output_schema = Keyword.get(opts, :output_schema)
         chunks = get_stream_chunks(config)
 
         stream =
           Stream.map(chunks, fn chunk ->
-            %{content: chunk, metadata: %{}}
+            content = maybe_parse_chunk(chunk, output_schema)
+            %{type: :content, content: content, metadata: %{partial: true, backend: :mock}}
           end)
 
         {:ok, stream}
 
       error ->
         {:error, error}
+    end
+  end
+
+  defp maybe_parse_chunk(chunk, nil), do: chunk
+
+  defp maybe_parse_chunk(chunk, schema) when is_binary(chunk) do
+    case Jason.decode(chunk) do
+      {:ok, object} when is_map(object) -> parse_with_schema(object, schema)
+      _ -> chunk
+    end
+  end
+
+  defp maybe_parse_chunk(chunk, schema) when is_map(chunk) do
+    parse_with_schema(chunk, schema)
+  end
+
+  defp maybe_parse_chunk(chunk, _schema), do: chunk
+
+  defp parse_with_schema(object, schema) do
+    case Zoi.parse(schema, object) do
+      {:ok, parsed} -> parsed
+      {:error, _} -> object
     end
   end
 
