@@ -10,6 +10,7 @@ Most LLM frameworks add complexity you don't need. Puck takes a different approa
 
 - **Agents are loops** — An LLM, tools, and a feedback loop. That's it.
 - **No hard-coded orchestration** — You control the flow, not the framework.
+- **Swap backends** - ReqLLM, BamlElixir, or implement your own
 - **Swap providers** — Anthropic to OpenAI to Bedrock
 - **Observe everything** — Lifecycle hooks for caching, guardrails, logging.
 
