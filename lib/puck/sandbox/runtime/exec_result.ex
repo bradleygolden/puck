@@ -1,4 +1,4 @@
-defmodule Puck.Sandbox.ExecResult do
+defmodule Puck.Sandbox.Runtime.ExecResult do
   @moduledoc """
   Struct representing the result of executing a command in a sandbox.
 
@@ -10,7 +10,7 @@ defmodule Puck.Sandbox.ExecResult do
 
   ## Examples
 
-      %Puck.Sandbox.ExecResult{
+      %Puck.Sandbox.Runtime.ExecResult{
         stdout: "hello world",
         stderr: "",
         exit_code: 0
@@ -31,8 +31,8 @@ defmodule Puck.Sandbox.ExecResult do
 
   ## Examples
 
-      iex> Puck.Sandbox.ExecResult.new(stdout: "hello", exit_code: 0)
-      %Puck.Sandbox.ExecResult{stdout: "hello", stderr: "", exit_code: 0}
+      iex> Puck.Sandbox.Runtime.ExecResult.new(stdout: "hello", exit_code: 0)
+      %Puck.Sandbox.Runtime.ExecResult{stdout: "hello", stderr: "", exit_code: 0}
 
   """
   @spec new(keyword()) :: t()
@@ -45,12 +45,12 @@ defmodule Puck.Sandbox.ExecResult do
 
   ## Examples
 
-      iex> result = Puck.Sandbox.ExecResult.new(exit_code: 0)
-      iex> Puck.Sandbox.ExecResult.success?(result)
+      iex> result = Puck.Sandbox.Runtime.ExecResult.new(exit_code: 0)
+      iex> Puck.Sandbox.Runtime.ExecResult.success?(result)
       true
 
-      iex> result = Puck.Sandbox.ExecResult.new(exit_code: 1)
-      iex> Puck.Sandbox.ExecResult.success?(result)
+      iex> result = Puck.Sandbox.Runtime.ExecResult.new(exit_code: 1)
+      iex> Puck.Sandbox.Runtime.ExecResult.success?(result)
       false
 
   """
@@ -65,12 +65,12 @@ defmodule Puck.Sandbox.ExecResult do
 
   ## Examples
 
-      iex> result = Puck.Sandbox.ExecResult.new(stdout: "hello", exit_code: 0)
-      iex> Puck.Sandbox.ExecResult.output(result)
+      iex> result = Puck.Sandbox.Runtime.ExecResult.new(stdout: "hello", exit_code: 0)
+      iex> Puck.Sandbox.Runtime.ExecResult.output(result)
       "hello"
 
-      iex> result = Puck.Sandbox.ExecResult.new(stderr: "error message", exit_code: 1)
-      iex> Puck.Sandbox.ExecResult.output(result)
+      iex> result = Puck.Sandbox.Runtime.ExecResult.new(stderr: "error message", exit_code: 1)
+      iex> Puck.Sandbox.Runtime.ExecResult.output(result)
       "error message"
 
   """

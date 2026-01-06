@@ -1,26 +1,26 @@
-defmodule Puck.Sandbox.Adapters.Test do
+defmodule Puck.Sandbox.Runtime.Adapters.Test do
   @moduledoc """
-  In-memory test adapter for Puck.Sandbox.
+  In-memory test adapter for Puck.Sandbox.Runtime.
 
   ## Usage
 
       setup do
-        start_supervised!(Puck.Sandbox.Adapters.Test)
+        start_supervised!(Puck.Sandbox.Runtime.Adapters.Test)
         :ok
       end
 
       test "sandbox" do
-        {:ok, sandbox} = Puck.Sandbox.create({Puck.Sandbox.Adapters.Test, %{}})
-        {:ok, result} = Puck.Sandbox.exec(sandbox, "echo hello")
+        {:ok, sandbox} = Puck.Sandbox.Runtime.create({Puck.Sandbox.Runtime.Adapters.Test, %{}})
+        {:ok, result} = Puck.Sandbox.Runtime.exec(sandbox, "echo hello")
       end
 
   """
 
-  @behaviour Puck.Sandbox.Adapter
+  @behaviour Puck.Sandbox.Runtime.Adapter
 
   use Agent
 
-  alias Puck.Sandbox.ExecResult
+  alias Puck.Sandbox.Runtime.ExecResult
 
   @doc """
   Starts the test adapter agent.

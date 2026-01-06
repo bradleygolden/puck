@@ -1,6 +1,6 @@
-defmodule Puck.Sandbox.Adapter do
+defmodule Puck.Sandbox.Runtime.Adapter do
   @moduledoc """
-  Behaviour for sandbox adapters.
+  Behaviour for runtime sandbox adapters.
 
   Adapters implement sandbox creation and management. Currently only the Test
   adapter is shipped. Custom adapters can be created by implementing this behaviour.
@@ -39,7 +39,7 @@ defmodule Puck.Sandbox.Adapter do
   ## Example
 
       defmodule MyAdapter do
-        @behaviour Puck.Sandbox.Adapter
+        @behaviour Puck.Sandbox.Runtime.Adapter
 
         @impl true
         def create(config) do
@@ -63,7 +63,7 @@ defmodule Puck.Sandbox.Adapter do
       end
   """
 
-  alias Puck.Sandbox.ExecResult
+  alias Puck.Sandbox.Runtime.ExecResult
 
   @type config :: map()
   @type sandbox_id :: String.t()
@@ -71,120 +71,20 @@ defmodule Puck.Sandbox.Adapter do
   @type command :: String.t()
   @type opts :: keyword()
 
-  @doc """
-  Creates a new sandbox with the given configuration.
-
-  ## Standard Config Fields
-
-  - `:image` - Container image (e.g., `"node:22-slim"`)
-  - `:memory_mb` - Memory limit in MB
-  - `:env` - Environment variables as `[{name, value}]`
-  - `:ports` - Ports to expose
-  - `:mounts` - Volume/file mounts
-  - `:proxy` - Enable proxy mode for network access
-
-  Returns `{:ok, sandbox_id, metadata}` on success or `{:error, reason}` on failure.
-  The metadata map contains adapter-specific information (e.g., `private_ip` for Fly,
-  `port_map` for Docker).
-  """
   @callback create(config()) :: {:ok, sandbox_id(), metadata()} | {:error, term()}
-
-  @doc """
-  Executes a command in the sandbox.
-
-  Options may include:
-  - `:timeout` - Command timeout in milliseconds
-  - `:workdir` - Working directory for the command
-
-  Returns `{:ok, %ExecResult{}}` on success or `{:error, reason}` on failure.
-  """
   @callback exec(sandbox_id(), command(), opts()) :: {:ok, ExecResult.t()} | {:error, term()}
-
-  @doc """
-  Terminates and cleans up the sandbox.
-
-  Options may include adapter-specific credentials (e.g., `:api_token` for Fly).
-
-  Returns `:ok` on success or `{:error, reason}` on failure.
-  """
   @callback terminate(sandbox_id(), opts()) :: :ok | {:error, term()}
-
-  @doc """
-  Gets the current status of the sandbox.
-
-  Options may include adapter-specific credentials (e.g., `:api_token` for Fly).
-  """
   @callback status(sandbox_id(), opts()) :: :running | :stopped | :terminated | :unknown
-
-  @doc """
-  Gets the URL for an exposed port on the sandbox.
-
-  Optional callback - not all adapters support exposed ports.
-  """
   @callback get_url(sandbox_id(), port :: integer()) :: {:ok, String.t()} | {:error, term()}
-
-  @doc """
-  Reads file contents from the sandbox.
-  """
   @callback read_file(sandbox_id(), path :: String.t(), opts()) ::
               {:ok, binary()} | {:error, term()}
-
-  @doc """
-  Writes a file to the sandbox.
-  """
   @callback write_file(sandbox_id(), path :: String.t(), content :: binary(), opts()) ::
               :ok | {:error, term()}
-
-  @doc """
-  Writes multiple files to the sandbox.
-  """
   @callback write_files(sandbox_id(), files :: [{String.t(), binary()}], opts()) ::
               :ok | {:error, term()}
-
-  @doc """
-  Waits for sandbox to become ready.
-
-  Each adapter can implement its own readiness logic. For example:
-  - Fly adapter uses native machine wait API + health poll
-  - Docker adapter polls health endpoint
-  - Test adapter returns immediately
-
-  The metadata parameter contains adapter-specific information from create/1
-  (e.g., private_ip for Fly adapter to enable fast health checks).
-
-  ## Options
-    * `:port` - health check port (default: 4001)
-    * `:timeout` - max wait time in ms (default: 60_000)
-    * `:interval` - poll interval in ms (default: 2_000)
-  """
   @callback await_ready(sandbox_id(), metadata(), opts()) :: {:ok, map()} | {:error, term()}
-
-  @doc """
-  Updates a sandbox's configuration without destroying it.
-
-  This is useful for updating the image or other config while preserving
-  state like volume attachments. Not all adapters support this operation.
-
-  ## Options
-    * `:image` - Container image
-    * `:memory_mb` - Memory limit in MB
-    * `:cpu` - CPU count
-    * `:env` - Environment variables
-    * `:ports` - Ports to expose
-  """
   @callback update(sandbox_id(), config(), opts()) :: {:ok, map()} | {:error, term()}
-
-  @doc """
-  Stops a sandbox without destroying it.
-
-  Useful for suspend/resume patterns to save costs. The sandbox can be
-  restarted with `start/2`.
-  """
   @callback stop(sandbox_id(), opts()) :: {:ok, map()} | {:error, term()}
-
-  @doc """
-  Starts a stopped sandbox.
-  """
   @callback start(sandbox_id(), opts()) :: {:ok, map()} | {:error, term()}
 
   @optional_callbacks [

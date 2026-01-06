@@ -1,10 +1,10 @@
-defmodule Puck.Sandbox.Instance do
+defmodule Puck.Sandbox.Runtime.Instance do
   @moduledoc """
-  Struct representing a sandbox instance.
+  Struct representing a runtime sandbox instance.
 
   This is a lightweight handle to an existing sandbox. The actual sandbox
   state lives in the infrastructure (Docker container, Fly machine, etc.)
-  and should be queried via `Puck.Sandbox.status/1`.
+  and should be queried via `Puck.Sandbox.Runtime.status/1`.
   """
 
   @type t :: %__MODULE__{
@@ -23,7 +23,7 @@ defmodule Puck.Sandbox.Instance do
 
   ## Examples
 
-      iex> instance = Puck.Sandbox.Instance.new(id: "abc123", adapter: Docker)
+      iex> instance = Puck.Sandbox.Runtime.Instance.new(id: "abc123", adapter: Docker)
       iex> {instance.id, instance.adapter, instance.config, instance.metadata}
       {"abc123", Docker, %{}, %{}}
 

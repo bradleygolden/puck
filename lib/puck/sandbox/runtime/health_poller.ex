@@ -1,5 +1,5 @@
 if Code.ensure_loaded?(Req) do
-  defmodule Puck.Sandbox.HealthPoller do
+  defmodule Puck.Sandbox.Runtime.HealthPoller do
     @moduledoc false
 
     use GenServer

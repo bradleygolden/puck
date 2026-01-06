@@ -1,4 +1,4 @@
-defmodule Puck.Sandbox.NDJSON do
+defmodule Puck.Sandbox.Runtime.NDJSON do
   @moduledoc false
 
   @doc """

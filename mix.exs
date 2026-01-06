@@ -52,6 +52,7 @@ defmodule Puck.MixProject do
       {:solid, "~> 0.15", optional: true},
       {:telemetry, "~> 1.2", optional: true},
       {:zoi, "~> 0.7", optional: true},
+      {:lua, "~> 0.4.0", optional: true},
       {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},

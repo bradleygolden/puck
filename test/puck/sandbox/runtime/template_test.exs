@@ -1,10 +1,10 @@
-defmodule Puck.Sandbox.TemplateTest do
+defmodule Puck.Sandbox.Runtime.TemplateTest do
   use ExUnit.Case, async: true
 
-  alias Puck.Sandbox
-  alias Puck.Sandbox.Adapters.Test, as: TestAdapter
-  alias Puck.Sandbox.Instance
-  alias Puck.Sandbox.Template
+  alias Puck.Sandbox.Runtime
+  alias Puck.Sandbox.Runtime.Adapters.Test, as: TestAdapter
+  alias Puck.Sandbox.Runtime.Instance
+  alias Puck.Sandbox.Runtime.Template
 
   setup do
     name = :"test_adapter_#{System.unique_integer([:positive])}"
@@ -44,23 +44,23 @@ defmodule Puck.Sandbox.TemplateTest do
   end
 
   describe "to_backend/2" do
-    test "returns tuple for Sandbox.create/1" do
+    test "returns tuple for Runtime.create/1" do
       template = Template.new({TestAdapter, %{image: "alpine"}})
 
       assert {TestAdapter, %{image: "alpine"}} = Template.to_backend(template)
     end
   end
 
-  describe "Sandbox.create/2 with Template" do
+  describe "Runtime.create/2 with Template" do
     test "creates sandbox from template", %{agent_name: agent_name} do
       template = Template.new({TestAdapter, %{agent_name: agent_name, image: "test:latest"}})
 
-      {:ok, sandbox} = Sandbox.create(template)
+      {:ok, sandbox} = Runtime.create(template)
 
       assert %Instance{} = sandbox
       assert sandbox.adapter == TestAdapter
       assert sandbox.config == %{agent_name: agent_name, image: "test:latest"}
-      assert Sandbox.status(sandbox) == :running
+      assert Runtime.status(sandbox) == :running
     end
   end
 end

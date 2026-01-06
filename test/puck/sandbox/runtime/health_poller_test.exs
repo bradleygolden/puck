@@ -1,7 +1,7 @@
-defmodule Puck.Sandbox.HealthPollerTest do
+defmodule Puck.Sandbox.Runtime.HealthPollerTest do
   use ExUnit.Case, async: true
 
-  alias Puck.Sandbox.HealthPoller
+  alias Puck.Sandbox.Runtime.HealthPoller
 
   defmodule MockPlug do
     @moduledoc false

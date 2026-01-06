@@ -88,7 +88,7 @@ That's it. Pattern match on struct types. Works with any backend.
 - **You build the loop** — Response-driven control flow, not framework magic
 - **Types, not strings** — Structured outputs via ReqLLM and BAML
 - **Observe everything** — Lifecycle hooks for caching, guardrails, logging
-- **Sandboxed execution** — Run LLM-generated code safely (work in progress)
+- **Sandboxed execution** — Run LLM-generated Lua code safely with callbacks
 - **Telemetry built-in** — Full observability with `:telemetry` events
 
 ## Installation
@@ -258,17 +258,81 @@ Available hooks:
 
 ## Sandboxes
 
-Execute code in isolated environments:
+Execute LLM-generated code safely with callbacks to your application:
 
 ```elixir
-alias Puck.Sandbox
-alias Puck.Sandbox.Adapters.Test
+alias Puck.Sandbox.Eval
 
-{:ok, sandbox} = Sandbox.create({Test, %{image: "elixir:1.16"}})
-{:ok, result} = Sandbox.exec(sandbox, "elixir --version")
-IO.puts(result.stdout)
-:ok = Sandbox.terminate(sandbox)
+# Simple eval
+{:ok, result} = Eval.eval(:lua, "return 1 + 2")
+
+# With callbacks to your application
+{:ok, result} = Eval.eval(:lua, """
+  local products = search("laptop")
+  local cheap = {}
+  for _, p in ipairs(products) do
+    if p.price < 1000 then table.insert(cheap, p) end
+  end
+  return cheap
+""", callbacks: %{
+  "search" => &MyApp.Products.search/1
+})
 ```
+
+### LLM-Generated Code
+
+Use `Lua.schema/1` to let LLMs generate and execute Lua code. The schema includes guidance so the LLM produces valid code (e.g., always use `return`).
+
+```elixir
+alias Puck.Sandbox.Eval.Lua
+
+defmodule Done do
+  defstruct type: "done", message: nil
+end
+
+# Define what functions the LLM can call
+@func_spec Zoi.object(%{
+  name: Zoi.enum(["double"]),
+  description: Zoi.string()
+}, strict: true, coerce: true)
+
+defp schema do
+  Zoi.union([
+    Lua.schema(@func_spec),
+    Zoi.struct(Done, %{
+      type: Zoi.literal("done"),
+      message: Zoi.string()
+    }, coerce: true)
+  ])
+end
+
+# Elixir callbacks the LLM can invoke via Lua
+@callbacks %{"double" => fn n -> n * 2 end}
+
+defp loop(client, input, ctx) do
+  {:ok, %{content: action}, ctx} = Puck.call(client, input, ctx, output_schema: schema())
+
+  case action do
+    %Lua.ExecuteCode{code: code} ->
+      {:ok, result} = Puck.Sandbox.Eval.eval(:lua, code, callbacks: @callbacks)
+      loop(client, "Result: #{inspect(result)}", ctx)
+
+    %Done{message: msg} ->
+      {:ok, msg}
+  end
+end
+
+# Start the agent
+client = Puck.Client.new(
+  {Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+  system_prompt: "You are a calculator. Use execute_lua for calculations, done when finished."
+)
+
+{:ok, answer} = loop(client, "Double the number 21", Puck.Context.new())
+# => {:ok, "The result is 42."}
+```
+
+Requires `{:lua, "~> 0.4.0"}` and `{:zoi, "~> 0.7"}` in your dependencies.
 
 ## Telemetry
 

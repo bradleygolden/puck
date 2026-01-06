@@ -1,14 +1,14 @@
-defmodule Puck.Sandbox.Template do
+defmodule Puck.Sandbox.Runtime.Template do
   @moduledoc """
   Reusable sandbox configuration template.
 
   ## Example
 
-      template = Puck.Sandbox.Template.new(adapter: MyAdapter, config: %{image: "python:3.12"})
-      {:ok, sandbox} = Puck.Sandbox.create(template)
+      template = Puck.Sandbox.Runtime.Template.new(adapter: MyAdapter, config: %{image: "python:3.12"})
+      {:ok, sandbox} = Puck.Sandbox.Runtime.create(template)
 
       # With overrides
-      {:ok, sandbox} = Sandbox.create(@python_template, memory_mb: 1024)
+      {:ok, sandbox} = Puck.Sandbox.Runtime.create(@python_template, memory_mb: 1024)
   """
 
   @type t :: %__MODULE__{
@@ -27,7 +27,7 @@ defmodule Puck.Sandbox.Template do
       # Keyword syntax
       Template.new(adapter: Docker, config: %{image: "python:3.12"})
 
-      # Tuple syntax (same as Sandbox.create/1)
+      # Tuple syntax (same as Runtime.create/1)
       Template.new({Docker, %{image: "python:3.12", memory_mb: 512}})
       Template.new({Docker, image: "python:3.12", memory_mb: 512})
   """
@@ -67,7 +67,7 @@ defmodule Puck.Sandbox.Template do
   end
 
   @doc """
-  Returns the backend tuple for `Sandbox.create/1`.
+  Returns the backend tuple for `Runtime.create/1`.
 
   ## Examples
 
