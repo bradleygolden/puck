@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Puck.Sandbox.Eval` - In-process code evaluation with Lua support
 - `Puck.Sandbox.Eval.Lua` - Lua sandbox with timeout, memory limits, and callbacks
+- `Puck.Sandbox.Eval.Lua.schema/1` - Schema helper for LLM-generated Lua code execution
 
 ### Changed
 

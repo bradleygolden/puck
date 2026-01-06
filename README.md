@@ -290,22 +290,23 @@ defmodule Done do
   defstruct type: "done", message: nil
 end
 
-# Define Lua types and function specs (descriptions guide the LLM)
-@lua_type Zoi.enum(["string", "number", "boolean", "table", nil],
-            description: "Lua data type")
+# Each function is self-contained with its signature in the description.
+# The LLM selects which functions to use - actual calls happen in Lua code.
+@double_func Zoi.object(
+  %{name: Zoi.literal("double")},
+  strict: true,
+  coerce: true,
+  description: "double(n: number) -> number: Doubles the input number"
+)
 
-@param_spec Zoi.object(%{
-  name: Zoi.string(description: "Parameter name"),
-  type: @lua_type,
-  description: Zoi.string(description: "What this parameter is for")
-}, strict: true, coerce: true)
+@add_func Zoi.object(
+  %{name: Zoi.literal("add")},
+  strict: true,
+  coerce: true,
+  description: "add(a: number, b: number) -> number: Adds two numbers together"
+)
 
-@func_spec Zoi.object(%{
-  name: Zoi.enum(["double"], description: "Function name. double: doubles a number"),
-  description: Zoi.string(description: "What this function does"),
-  params: Zoi.list(@param_spec, description: "Function parameters"),
-  returns: @lua_type
-}, strict: true, coerce: true)
+@func_spec Zoi.union([@double_func, @add_func])
 
 defp schema do
   Zoi.union([
@@ -318,7 +319,10 @@ defp schema do
 end
 
 # Elixir callbacks the LLM can invoke via Lua
-@callbacks %{"double" => fn n -> n * 2 end}
+@callbacks %{
+  "double" => fn n -> n * 2 end,
+  "add" => fn a, b -> a + b end
+}
 
 defp loop(client, input, ctx) do
   {:ok, %{content: action}, ctx} = Puck.call(client, input, ctx, output_schema: schema())
