@@ -98,6 +98,9 @@ jobs:
     - name: Run Credo
       run: mix credo --strict
 
+    - name: Run Sobelow security analysis
+      run: mix sobelow --config
+
     - name: Audit dependencies for vulnerabilities
       run: mix deps.audit
 
