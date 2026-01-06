@@ -290,10 +290,21 @@ defmodule Done do
   defstruct type: "done", message: nil
 end
 
-# Define what functions the LLM can call
+# Define Lua types and function specs (descriptions guide the LLM)
+@lua_type Zoi.enum(["string", "number", "boolean", "table", nil],
+            description: "Lua data type")
+
+@param_spec Zoi.object(%{
+  name: Zoi.string(description: "Parameter name"),
+  type: @lua_type,
+  description: Zoi.string(description: "What this parameter is for")
+}, strict: true, coerce: true)
+
 @func_spec Zoi.object(%{
-  name: Zoi.enum(["double"]),
-  description: Zoi.string()
+  name: Zoi.enum(["double"], description: "Function name. double: doubles a number"),
+  description: Zoi.string(description: "What this function does"),
+  params: Zoi.list(@param_spec, description: "Function parameters"),
+  returns: @lua_type
 }, strict: true, coerce: true)
 
 defp schema do
@@ -301,7 +312,7 @@ defp schema do
     Lua.schema(@func_spec),
     Zoi.struct(Done, %{
       type: Zoi.literal("done"),
-      message: Zoi.string()
+      message: Zoi.string(description: "Final response to the user")
     }, coerce: true)
   ])
 end
