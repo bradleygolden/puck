@@ -40,7 +40,7 @@ defmodule Puck do
 
   """
 
-  alias Puck.{Client, Context, Response, Runtime}
+  alias Puck.{Client, Context, Runtime}
 
   @doc """
   Calls an LLM and returns the response.
@@ -68,14 +68,11 @@ defmodule Puck do
       {:ok, response, context} = Puck.call(client, "Follow-up question", context)
 
   """
-  @spec call(Client.t(), term()) :: {:ok, Response.t(), Context.t()} | {:error, term()}
   def call(%Client{} = client, content) do
     {context, final_content} = build_context_from_content(content)
     Runtime.call(client, final_content, context, [])
   end
 
-  @spec call(Client.t(), term(), Context.t(), keyword()) ::
-          {:ok, Response.t(), Context.t()} | {:error, term()}
   def call(%Client{} = client, content, %Context{} = context, opts \\ []) do
     Runtime.call(client, content, context, opts)
   end
@@ -95,14 +92,11 @@ defmodule Puck do
       Enum.each(stream, fn chunk -> IO.write(chunk.content) end)
 
   """
-  @spec stream(Client.t(), term()) :: {:ok, Enumerable.t(), Context.t()} | {:error, term()}
   def stream(%Client{} = client, content) do
     {context, final_content} = build_context_from_content(content)
     Runtime.stream(client, final_content, context, [])
   end
 
-  @spec stream(Client.t(), term(), Context.t(), keyword()) ::
-          {:ok, Enumerable.t(), Context.t()} | {:error, term()}
   def stream(%Client{} = client, content, %Context{} = context, opts \\ []) do
     Runtime.stream(client, content, context, opts)
   end

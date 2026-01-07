@@ -62,7 +62,6 @@ defmodule Puck.Response do
       %Puck.Response{content: "Hello!", thinking: nil, finish_reason: nil, usage: %{}, metadata: %{}}
 
   """
-  @spec new(keyword()) :: t()
   def new(attrs \\ []) do
     struct(__MODULE__, attrs)
   end
@@ -81,7 +80,6 @@ defmodule Puck.Response do
       false
 
   """
-  @spec complete?(t()) :: boolean()
   def complete?(%__MODULE__{finish_reason: :stop}), do: true
   def complete?(%__MODULE__{finish_reason: :end_turn}), do: true
   def complete?(%__MODULE__{}), do: false
@@ -104,7 +102,6 @@ defmodule Puck.Response do
       nil
 
   """
-  @spec total_tokens(t()) :: non_neg_integer() | nil
   def total_tokens(%__MODULE__{usage: %{total_tokens: total}}), do: total
 
   def total_tokens(%__MODULE__{usage: usage}) do
@@ -135,7 +132,6 @@ defmodule Puck.Response do
       nil
 
   """
-  @spec text(t()) :: String.t() | nil
   def text(%__MODULE__{content: content}) when is_binary(content), do: content
   def text(%__MODULE__{}), do: nil
 

@@ -21,7 +21,6 @@ if Code.ensure_loaded?(Req) do
       * `{:error, :timeout}` - Timed out waiting for health check
       * `{:error, {:poller_crashed, reason}}` - Poller process crashed
     """
-    @spec poll(String.t(), keyword()) :: {:ok, term()} | {:error, term()}
     def poll(url, opts \\ []) do
       timeout = Keyword.get(opts, :timeout, @default_timeout)
       interval = Keyword.get(opts, :interval, @default_interval)

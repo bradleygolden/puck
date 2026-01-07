@@ -136,4 +136,36 @@ defmodule Puck.ContextTest do
       assert Context.get_metadata(context, :missing, "default") == "default"
     end
   end
+
+  describe "compact/2" do
+    test "delegates to Puck.Compaction.compact/2" do
+      context =
+        Context.new()
+        |> Context.add_message(:user, "Q1")
+        |> Context.add_message(:assistant, "A1")
+        |> Context.add_message(:user, "Q2")
+        |> Context.add_message(:assistant, "A2")
+
+      {:ok, compacted} =
+        Context.compact(context, {Puck.Compaction.SlidingWindow, %{window_size: 2}})
+
+      assert Context.message_count(compacted) == 2
+    end
+  end
+
+  describe "total_tokens/1" do
+    test "returns 0 when no metadata" do
+      context = Context.new()
+
+      assert Context.total_tokens(context) == 0
+    end
+
+    test "returns value from metadata" do
+      context =
+        Context.new()
+        |> Context.put_metadata(:total_tokens, 5000)
+
+      assert Context.total_tokens(context) == 5000
+    end
+  end
 end

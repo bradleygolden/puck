@@ -77,7 +77,6 @@ defmodule Puck.Sandbox.Eval do
 
       {:error, :timeout} = Puck.Sandbox.Eval.eval(:lua, "while true do end", timeout_ms: 100)
   """
-  @spec eval(engine(), code(), eval_opts()) :: {:ok, term()} | {:error, term()}
   def eval(engine, code, opts \\ [])
 
   def eval(:lua, code, opts) do
@@ -95,7 +94,6 @@ defmodule Puck.Sandbox.Eval do
 
       42 = Puck.Sandbox.Eval.eval!(:lua, "return 42")
   """
-  @spec eval!(engine(), code(), eval_opts()) :: term()
   def eval!(engine, code, opts \\ [])
 
   def eval!(:lua, code, opts) do
@@ -113,7 +111,6 @@ defmodule Puck.Sandbox.Eval do
 
       [:lua] = Puck.Sandbox.Eval.engines()
   """
-  @spec engines() :: [engine()]
   def engines do
     [:lua]
   end
@@ -126,7 +123,6 @@ defmodule Puck.Sandbox.Eval do
       true = Puck.Sandbox.Eval.engine_available?(:lua)
       false = Puck.Sandbox.Eval.engine_available?(:python)
   """
-  @spec engine_available?(engine()) :: boolean()
   def engine_available?(:lua), do: Code.ensure_loaded?(LuaEngine)
   def engine_available?(_), do: false
 end

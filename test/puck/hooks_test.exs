@@ -122,6 +122,50 @@ defmodule Puck.HooksTest do
     end
   end
 
+  defmodule CompactionContHooks do
+    @behaviour Puck.Hooks
+
+    @impl true
+    def on_compaction_start(context, _strategy, _config) do
+      send(self(), {:hook, :on_compaction_start})
+      {:cont, context}
+    end
+
+    @impl true
+    def on_compaction_end(context, _strategy) do
+      send(self(), {:hook, :on_compaction_end})
+      {:cont, context}
+    end
+  end
+
+  defmodule CompactionHaltHooks do
+    @behaviour Puck.Hooks
+
+    @impl true
+    def on_compaction_start(context, _strategy, _config) do
+      {:halt, context}
+    end
+  end
+
+  defmodule CompactionErrorHooks do
+    @behaviour Puck.Hooks
+
+    @impl true
+    def on_compaction_start(_context, _strategy, _config) do
+      {:error, :compaction_blocked}
+    end
+  end
+
+  defmodule CompactionTransformHooks do
+    @behaviour Puck.Hooks
+
+    @impl true
+    def on_compaction_end(context, _strategy) do
+      updated = Context.put_metadata(context, :transformed_by_hook, true)
+      {:cont, updated}
+    end
+  end
+
   describe "Hooks.invoke/4 (transforming)" do
     test "passes through value when callback returns {:cont, value}" do
       assert {:cont, "hello"} =
@@ -321,6 +365,60 @@ defmodule Puck.HooksTest do
       assert_received {:hook, :on_stream_chunk, ^client, _, _}
 
       assert_received {:hook, :on_stream_end, ^client, ^context}
+    end
+  end
+
+  describe "compaction hooks via Hooks.invoke/4" do
+    test "on_compaction_start passes through context when callback returns {:cont, context}" do
+      context = Context.new()
+
+      assert {:cont, ^context} =
+               Hooks.invoke(
+                 CompactionContHooks,
+                 :on_compaction_start,
+                 [context, :test_strategy, %{}],
+                 context
+               )
+
+      assert_received {:hook, :on_compaction_start}
+    end
+
+    test "on_compaction_start halts when callback returns {:halt, context}" do
+      context = Context.new()
+
+      assert {:halt, ^context} =
+               Hooks.invoke(
+                 CompactionHaltHooks,
+                 :on_compaction_start,
+                 [context, :test_strategy, %{}],
+                 context
+               )
+    end
+
+    test "on_compaction_start returns error when callback returns {:error, reason}" do
+      context = Context.new()
+
+      assert {:error, :compaction_blocked} =
+               Hooks.invoke(
+                 CompactionErrorHooks,
+                 :on_compaction_start,
+                 [context, :test_strategy, %{}],
+                 context
+               )
+    end
+
+    test "on_compaction_end transforms context" do
+      context = Context.new()
+
+      assert {:cont, transformed_context} =
+               Hooks.invoke(
+                 CompactionTransformHooks,
+                 :on_compaction_end,
+                 [context, :test_strategy],
+                 context
+               )
+
+      assert Context.get_metadata(transformed_context, :transformed_by_hook) == true
     end
   end
 end

@@ -18,6 +18,7 @@ defmodule Puck.Hooks do
   - `on_call_error/3` - On call failure
   - `on_stream_start/3`, `on_stream_chunk/3`, `on_stream_end/2` - Stream lifecycle
   - `on_backend_request/2`, `on_backend_response/2` - Backend lifecycle
+  - `on_compaction_start/3`, `on_compaction_end/2` - Compaction lifecycle
 
   ## Example
 
@@ -60,24 +61,26 @@ defmodule Puck.Hooks do
   @type config :: map()
   @type chunk :: map()
 
-  # Call lifecycle - transforming
   @callback on_call_start(client, content :: term(), context) ::
               {:cont, term()} | {:halt, response} | {:error, term()}
   @callback on_call_end(client, response, context) ::
               {:cont, response} | {:error, term()}
   @callback on_call_error(client, error :: term(), context) :: term()
 
-  # Stream lifecycle
   @callback on_stream_start(client, content :: term(), context) ::
               {:cont, term()} | {:error, term()}
   @callback on_stream_chunk(client, chunk, context) :: term()
   @callback on_stream_end(client, context) :: term()
 
-  # Backend lifecycle - transforming
   @callback on_backend_request(config, messages) ::
               {:cont, messages} | {:halt, response} | {:error, term()}
   @callback on_backend_response(config, response) ::
               {:cont, response} | {:error, term()}
+
+  @callback on_compaction_start(context, strategy :: module(), config :: map()) ::
+              {:cont, context} | {:halt, context} | {:error, term()}
+  @callback on_compaction_end(context, strategy :: module()) ::
+              {:cont, context} | {:error, term()}
 
   @optional_callbacks on_call_start: 3,
                       on_call_end: 3,
@@ -86,7 +89,9 @@ defmodule Puck.Hooks do
                       on_stream_chunk: 3,
                       on_stream_end: 2,
                       on_backend_request: 2,
-                      on_backend_response: 2
+                      on_backend_response: 2,
+                      on_compaction_start: 3,
+                      on_compaction_end: 2
 
   @doc """
   Invokes a transforming hook callback on the given hook module(s).
@@ -100,8 +105,6 @@ defmodule Puck.Hooks do
   - `{:halt, response}` - Short-circuit with a response
   - `{:error, reason}` - Abort with error
   """
-  @spec invoke(module() | [module()] | nil, atom(), [term()], term()) ::
-          {:cont, term()} | {:halt, Response.t()} | {:error, term()}
   def invoke(hooks, callback, args, initial_value)
 
   def invoke(nil, _callback, _args, value), do: {:cont, value}
@@ -138,7 +141,6 @@ defmodule Puck.Hooks do
   Used for callbacks like `on_call_error`, `on_stream_chunk`, `on_stream_end`
   where the return value doesn't affect the pipeline.
   """
-  @spec invoke(module() | [module()] | nil, atom(), [term()]) :: :ok
   def invoke(hooks, callback, args)
 
   def invoke(nil, _callback, _args), do: :ok
@@ -162,8 +164,6 @@ defmodule Puck.Hooks do
 
   Per-call hooks come after client-level hooks (client hooks run first).
   """
-  @spec merge(module() | [module()] | nil, module() | [module()] | nil) ::
-          [module()] | nil
   def merge(nil, nil), do: nil
   def merge(client_hooks, nil), do: normalize(client_hooks)
   def merge(nil, call_hooks), do: normalize(call_hooks)

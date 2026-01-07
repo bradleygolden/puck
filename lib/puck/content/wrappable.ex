@@ -23,7 +23,6 @@ defprotocol Puck.Content.Wrappable do
       [%Puck.Content.Part{type: :text, text: ~s({"result":42})}]
 
   """
-  @spec wrap(t) :: [Puck.Content.Part.t()]
   def wrap(content)
 end
 

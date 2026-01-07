@@ -9,7 +9,6 @@ defmodule Puck.Context do
 
   """
 
-  alias Puck.Content.Part
   alias Puck.Message
 
   @type t :: %__MODULE__{
@@ -31,7 +30,6 @@ defmodule Puck.Context do
       %Puck.Context{messages: [], metadata: %{session_id: "abc123"}}
 
   """
-  @spec new(keyword()) :: t()
   def new(opts \\ []) do
     %__MODULE__{
       messages: Keyword.get(opts, :messages, []),
@@ -52,7 +50,6 @@ defmodule Puck.Context do
       1
 
   """
-  @spec add_message(t(), Message.role(), String.t() | Part.t() | [Part.t()], map()) :: t()
   def add_message(%__MODULE__{} = context, role, content, metadata \\ %{}) do
     message = Message.new(role, content, metadata)
     %{context | messages: context.messages ++ [message]}
@@ -69,7 +66,6 @@ defmodule Puck.Context do
       1
 
   """
-  @spec messages(t()) :: [Message.t()]
   def messages(%__MODULE__{messages: messages}), do: messages
 
   @doc """
@@ -82,7 +78,6 @@ defmodule Puck.Context do
       nil
 
   """
-  @spec last_message(t()) :: Message.t() | nil
   def last_message(%__MODULE__{messages: []}), do: nil
   def last_message(%__MODULE__{messages: messages}), do: List.last(messages)
 
@@ -96,7 +91,6 @@ defmodule Puck.Context do
       0
 
   """
-  @spec message_count(t()) :: non_neg_integer()
   def message_count(%__MODULE__{messages: messages}), do: length(messages)
 
   @doc """
@@ -110,7 +104,6 @@ defmodule Puck.Context do
       %{session_id: "abc123"}
 
   """
-  @spec put_metadata(t(), atom(), term()) :: t()
   def put_metadata(%__MODULE__{} = context, key, value) do
     %{context | metadata: Map.put(context.metadata, key, value)}
   end
@@ -128,7 +121,6 @@ defmodule Puck.Context do
       nil
 
   """
-  @spec get_metadata(t(), atom(), term()) :: term()
   def get_metadata(%__MODULE__{metadata: metadata}, key, default \\ nil) do
     Map.get(metadata, key, default)
   end
@@ -147,8 +139,41 @@ defmodule Puck.Context do
       {[], %{session_id: "abc123"}}
 
   """
-  @spec clear(t()) :: t()
   def clear(%__MODULE__{} = context) do
     %{context | messages: []}
+  end
+
+  @doc """
+  Compacts the context using the specified strategy.
+
+  Delegates to `Puck.Compaction.compact/2`.
+
+  ## Examples
+
+      {:ok, compacted} = Puck.Context.compact(context, {Puck.Compaction.Summarize, %{
+        client: client,
+        keep_last: 3
+      }})
+
+  """
+  def compact(%__MODULE__{} = context, strategy_tuple) do
+    Puck.Compaction.compact(context, strategy_tuple)
+  end
+
+  @doc """
+  Returns the total token count from context metadata.
+
+  This value is tracked by the runtime after each LLM call.
+  Returns 0 if no token information has been recorded.
+
+  ## Examples
+
+      iex> context = Puck.Context.new()
+      iex> Puck.Context.total_tokens(context)
+      0
+
+  """
+  def total_tokens(%__MODULE__{} = context) do
+    get_metadata(context, :total_tokens, 0)
   end
 end

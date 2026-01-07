@@ -36,7 +36,6 @@ defmodule Puck.Message do
       %Puck.Message{role: :user, content: [%Puck.Content.Part{type: :text, text: "Hi!"}], metadata: %{}}
 
   """
-  @spec new(role(), String.t() | Part.t() | [Part.t()], map()) :: t()
   def new(role, content, metadata \\ %{})
       when role in [:system, :user, :assistant] do
     %__MODULE__{

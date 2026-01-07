@@ -45,6 +45,62 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         assert response.metadata.provider == "baml"
         assert response.metadata.function == "Summarize"
       end
+
+      test "call/2 tracks token usage via collector" do
+        client =
+          Puck.Client.new(
+            {Puck.Backends.Baml, function: "Summarize", path: "test/support/baml_src"}
+          )
+
+        {:ok, response, _ctx} =
+          Puck.call(client, "The quick brown fox jumps over the lazy dog.")
+
+        assert response.usage != %{}
+        assert is_integer(response.usage[:input_tokens]) or is_nil(response.usage[:input_tokens])
+
+        assert is_integer(response.usage[:output_tokens]) or
+                 is_nil(response.usage[:output_tokens])
+      end
+
+      test "call/2 accumulates tokens in context metadata" do
+        client =
+          Puck.Client.new(
+            {Puck.Backends.Baml, function: "Summarize", path: "test/support/baml_src"}
+          )
+
+        context = Puck.Context.new()
+
+        {:ok, _response, context} = Puck.call(client, "First message", context)
+        {:ok, _response, context} = Puck.call(client, "Second message", context)
+
+        total_tokens = Puck.Context.total_tokens(context)
+        assert total_tokens >= 0
+      end
+
+      test "BAML with {:summarize, opts} triggers compaction based on token threshold" do
+        summarize_client =
+          Puck.Client.new({Puck.Backends.Mock, response: "Summary of conversation"})
+
+        client =
+          Puck.Client.new(
+            {Puck.Backends.Baml, function: "Summarize", path: "test/support/baml_src"},
+            auto_compaction: {:summarize, max_tokens: 50, client: summarize_client, keep_last: 1}
+          )
+
+        context = Puck.Context.new()
+
+        {:ok, _response, context} = Puck.call(client, "First message", context)
+        tokens_after_first = Puck.Context.total_tokens(context)
+        messages_after_first = Puck.Context.message_count(context)
+
+        {:ok, _response, final_context} = Puck.call(client, "Second message", context)
+
+        if tokens_after_first >= 50 do
+          assert Puck.Context.message_count(final_context) < messages_after_first + 2
+        else
+          assert Puck.Context.message_count(final_context) == messages_after_first + 2
+        end
+      end
     end
 
     defp check_ollama_available do

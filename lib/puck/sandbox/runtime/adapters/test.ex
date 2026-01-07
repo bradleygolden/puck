@@ -59,13 +59,6 @@ defmodule Puck.Sandbox.Runtime.Adapters.Test do
   @doc """
   Sets a mock response for a specific command in a sandbox.
   """
-  @spec set_exec_response(
-          String.t(),
-          String.t(),
-          {:ok, ExecResult.t()} | {:error, term()},
-          atom()
-        ) ::
-          :ok
   def set_exec_response(sandbox_id, command, response, name \\ __MODULE__) do
     Agent.update(name, fn state ->
       put_in(state, [:responses, {sandbox_id, command}], response)
@@ -75,7 +68,6 @@ defmodule Puck.Sandbox.Runtime.Adapters.Test do
   @doc """
   Gets the command execution history for a sandbox.
   """
-  @spec get_exec_history(String.t(), atom()) :: [String.t()]
   def get_exec_history(sandbox_id, name \\ __MODULE__) do
     Agent.get(name, fn state ->
       get_in(state, [:sandboxes, sandbox_id, :history]) || []
@@ -85,7 +77,6 @@ defmodule Puck.Sandbox.Runtime.Adapters.Test do
   @doc """
   Gets the config for a sandbox.
   """
-  @spec get_config(String.t(), atom()) :: map() | nil
   def get_config(sandbox_id, name \\ __MODULE__) do
     Agent.get(name, fn state ->
       get_in(state, [:sandboxes, sandbox_id, :config])

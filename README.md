@@ -145,6 +145,30 @@ context = Puck.Context.new()
 {:ok, resp2, context} = Puck.call(client, "How is it different from Ruby?", context)
 ```
 
+### Context Compaction
+
+Long conversations can exceed context limits. Enable auto-compaction to handle this automatically:
+
+```elixir
+# Summarize when token threshold exceeded
+client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+  auto_compaction: {:summarize, max_tokens: 100_000, keep_last: 5}
+)
+
+# Sliding window (keeps last N messages)
+client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+  auto_compaction: {:sliding_window, window_size: 30}
+)
+```
+
+Or compact manually:
+
+```elixir
+{:ok, compacted} = Puck.Context.compact(context, {Puck.Compaction.SlidingWindow, %{
+  window_size: 20
+}})
+```
+
 ### Streaming
 
 ```elixir
@@ -255,6 +279,7 @@ Available hooks:
 - `on_call_error/3` — On call failure
 - `on_stream_start/3`, `on_stream_chunk/3`, `on_stream_end/2` — Stream lifecycle
 - `on_backend_request/2`, `on_backend_response/2` — Backend request/response
+- `on_compaction_start/3`, `on_compaction_end/2` — Compaction lifecycle
 
 ## Sandboxes
 
@@ -374,6 +399,9 @@ Puck.Telemetry.attach_default_logger(level: :info)
 | `[:puck, :stream, :stop]` | `duration` | After streaming completes |
 | `[:puck, :backend, :request]` | `system_time` | Before backend request |
 | `[:puck, :backend, :response]` | `system_time` | After backend response |
+| `[:puck, :compaction, :start]` | `system_time` | Before context compaction |
+| `[:puck, :compaction, :stop]` | `duration`, `messages_before`, `messages_after` | After successful compaction |
+| `[:puck, :compaction, :error]` | `duration` | On compaction failure |
 
 All events include relevant metadata (client, context, response, etc.). Durations are in native time units.
 See `Puck.Telemetry` module docs for full details.

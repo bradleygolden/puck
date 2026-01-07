@@ -31,7 +31,6 @@ defmodule Puck.Sandbox.Runtime.Template do
       Template.new({Docker, %{image: "python:3.12", memory_mb: 512}})
       Template.new({Docker, image: "python:3.12", memory_mb: 512})
   """
-  @spec new(keyword() | {module(), map() | keyword()}) :: t()
   def new({adapter, config}) when is_atom(adapter) do
     %__MODULE__{
       adapter: adapter,
@@ -60,7 +59,6 @@ defmodule Puck.Sandbox.Runtime.Template do
       merged = Template.merge(template, %{memory_mb: 512, cpu: 2})
       # => %{image: "python", memory_mb: 512, cpu: 2}
   """
-  @spec merge(t(), map() | keyword()) :: map()
   def merge(%__MODULE__{config: base_config}, overrides) do
     override_map = normalize_config(overrides)
     deep_merge(base_config, override_map)
@@ -78,7 +76,6 @@ defmodule Puck.Sandbox.Runtime.Template do
       Template.to_backend(template, %{memory_mb: 512})
       # => {Docker, %{image: "python", memory_mb: 512}}
   """
-  @spec to_backend(t(), map() | keyword()) :: {module(), map()}
   def to_backend(%__MODULE__{adapter: adapter} = template, overrides \\ %{}) do
     {adapter, merge(template, overrides)}
   end

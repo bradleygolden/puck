@@ -37,11 +37,16 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       args = build_args(messages, config)
       output_schema = Keyword.get(opts, :output_schema)
       backend_opts = Keyword.get(opts, :backend_opts, [])
+
+      collector = BamlElixir.Collector.new("puck-#{System.unique_integer([:positive])}")
+
       baml_opts = build_baml_opts(config, output_schema, backend_opts)
+      baml_opts = Map.update(baml_opts, :collectors, [collector], &[collector | &1])
 
       case BamlElixir.Client.call(function_name, args, baml_opts) do
         {:ok, result} ->
-          {:ok, build_response(result, config, output_schema)}
+          usage = extract_collector_usage(collector)
+          {:ok, build_response(result, config, output_schema, usage)}
 
         {:error, reason} ->
           {:error, reason}
@@ -54,7 +59,12 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       args = build_args(messages, config)
       output_schema = Keyword.get(opts, :output_schema)
       backend_opts = Keyword.get(opts, :backend_opts, [])
+
+      collector = BamlElixir.Collector.new("puck-stream-#{System.unique_integer([:positive])}")
+
       baml_opts = build_baml_opts(config, output_schema, backend_opts)
+      baml_opts = Map.update(baml_opts, :collectors, [collector], &[collector | &1])
+
       caller = self()
       ref = make_ref()
 
@@ -153,21 +163,33 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
     end
 
-    defp build_response(result, config, output_schema) do
+    defp build_response(result, config, output_schema, usage) do
       content = maybe_parse_schema(output_schema, result)
 
       Response.new(
         content: content,
-        # BAML does not support thinking/reasoning tokens
         thinking: nil,
         finish_reason: :stop,
-        usage: %{},
+        usage: usage,
         metadata: %{
           provider: "baml",
           function: Map.get(config, :function),
           backend: :baml
         }
       )
+    end
+
+    defp extract_collector_usage(collector) do
+      case BamlElixir.Collector.usage(collector) do
+        %{} = usage ->
+          %{
+            input_tokens: usage[:input_tokens] || 0,
+            output_tokens: usage[:output_tokens] || 0
+          }
+
+        _ ->
+          %{}
+      end
     end
 
     defp maybe_parse_schema(schema, result) when is_map(result) and not is_nil(schema) do

@@ -28,7 +28,6 @@ defmodule Puck.Sandbox.Runtime.Instance do
       {"abc123", Docker, %{}, %{}}
 
   """
-  @spec new(keyword()) :: t()
   def new(attrs \\ []) do
     attrs
     |> Keyword.put_new_lazy(:created_at, fn -> System.monotonic_time(:millisecond) end)

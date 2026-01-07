@@ -124,6 +124,11 @@ defmodule Puck.MixProject do
         Telemetry: [
           Puck.Telemetry
         ],
+        Compaction: [
+          Puck.Compaction,
+          Puck.Compaction.Summarize,
+          Puck.Compaction.SlidingWindow
+        ],
         Sandbox: [
           Puck.Sandbox,
           Puck.Sandbox.Adapter,

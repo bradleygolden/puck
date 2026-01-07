@@ -35,7 +35,6 @@ defmodule Puck.Sandbox.Runtime.ExecResult do
       %Puck.Sandbox.Runtime.ExecResult{stdout: "hello", stderr: "", exit_code: 0}
 
   """
-  @spec new(keyword()) :: t()
   def new(attrs \\ []) do
     struct(__MODULE__, attrs)
   end
@@ -54,7 +53,6 @@ defmodule Puck.Sandbox.Runtime.ExecResult do
       false
 
   """
-  @spec success?(t()) :: boolean()
   def success?(%__MODULE__{exit_code: 0}), do: true
   def success?(%__MODULE__{}), do: false
 
@@ -74,7 +72,6 @@ defmodule Puck.Sandbox.Runtime.ExecResult do
       "error message"
 
   """
-  @spec output(t()) :: String.t()
   def output(%__MODULE__{stdout: stdout}) when stdout != "", do: stdout
   def output(%__MODULE__{stderr: stderr}), do: stderr
 end

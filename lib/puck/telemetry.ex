@@ -122,6 +122,49 @@ if Code.ensure_loaded?(:telemetry) do
       * `:config` - The backend configuration.
       * `:response` - The backend response.
 
+    ### Compaction Start
+
+    `[:puck, :compaction, :start]` - Executed before context compaction.
+
+    #### Measurements
+
+      * `:system_time` - The system time in native units.
+
+    #### Metadata
+
+      * `:context` - The `Puck.Context` struct before compaction.
+      * `:strategy` - The compaction strategy module.
+      * `:config` - The compaction configuration.
+
+    ### Compaction Stop
+
+    `[:puck, :compaction, :stop]` - Executed after successful compaction.
+
+    #### Measurements
+
+      * `:duration` - Time taken in native units.
+      * `:messages_before` - Message count before compaction.
+      * `:messages_after` - Message count after compaction.
+
+    #### Metadata
+
+      * `:context` - The `Puck.Context` struct after compaction.
+      * `:strategy` - The compaction strategy module.
+
+    ### Compaction Error
+
+    `[:puck, :compaction, :error]` - Executed when compaction fails.
+
+    #### Measurements
+
+      * `:duration` - Time taken before failure in native units.
+
+    #### Metadata
+
+      * `:context` - The `Puck.Context` struct.
+      * `:strategy` - The compaction strategy module.
+      * `:reason` - The error reason.
+
     ## Attaching Handlers
 
         :telemetry.attach_many("my-handler", Puck.Telemetry.event_names(), &handler/4, nil)
@@ -141,7 +184,6 @@ if Code.ensure_loaded?(:telemetry) do
         :telemetry.attach_many("my-handler", Puck.Telemetry.event_names(), &handler/4, nil)
 
     """
-    @spec event_names() :: [[atom()]]
     def event_names do
       [
         [:puck, :call, :start],
@@ -151,7 +193,10 @@ if Code.ensure_loaded?(:telemetry) do
         [:puck, :stream, :chunk],
         [:puck, :stream, :stop],
         [:puck, :backend, :request],
-        [:puck, :backend, :response]
+        [:puck, :backend, :response],
+        [:puck, :compaction, :start],
+        [:puck, :compaction, :stop],
+        [:puck, :compaction, :error]
       ]
     end
 
@@ -171,7 +216,6 @@ if Code.ensure_loaded?(:telemetry) do
         Puck.Telemetry.attach_default_logger(level: :info)
 
     """
-    @spec attach_default_logger(keyword()) :: :ok | {:error, :already_exists}
     def attach_default_logger(opts \\ []) do
       level = Keyword.get(opts, :level, :debug)
 
@@ -186,7 +230,6 @@ if Code.ensure_loaded?(:telemetry) do
     @doc """
     Detaches the default logging handler.
     """
-    @spec detach_default_logger() :: :ok | {:error, :not_found}
     def detach_default_logger do
       :telemetry.detach("puck-telemetry-default-logger")
     end

@@ -6,7 +6,6 @@ defmodule Puck.Sandbox.Runtime.NDJSON do
 
   Handles partial lines across chunk boundaries by buffering incomplete lines.
   """
-  @spec stream(Enumerable.t()) :: Enumerable.t()
   def stream(enum) do
     enum
     |> Stream.transform("", &parse_lines/2)

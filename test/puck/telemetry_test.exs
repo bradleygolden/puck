@@ -128,6 +128,14 @@ if Code.ensure_loaded?(:telemetry) do
         assert [:puck, :backend, :request] in names
         assert [:puck, :backend, :response] in names
       end
+
+      test "includes compaction events" do
+        names = Puck.Telemetry.event_names()
+
+        assert [:puck, :compaction, :start] in names
+        assert [:puck, :compaction, :stop] in names
+        assert [:puck, :compaction, :error] in names
+      end
     end
 
     describe "attach_default_logger/1" do

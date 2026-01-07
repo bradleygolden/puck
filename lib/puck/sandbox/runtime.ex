@@ -59,7 +59,6 @@ defmodule Puck.Sandbox.Runtime do
         memory_mb: 2048
       }})
   """
-  @spec create(backend()) :: {:ok, Instance.t()} | {:error, term()}
   def create({adapter_module, config}) when is_atom(adapter_module) do
     config_map = normalize_config(config)
 
@@ -89,7 +88,6 @@ defmodule Puck.Sandbox.Runtime do
       # With overrides
       {:ok, sandbox} = Runtime.create(template, memory_mb: 1024)
   """
-  @spec create(Template.t(), map() | keyword()) :: {:ok, Instance.t()} | {:error, term()}
   def create(%Template{} = template, overrides \\ %{}) do
     backend = Template.to_backend(template, overrides)
     create(backend)
@@ -106,7 +104,6 @@ defmodule Puck.Sandbox.Runtime do
       sandbox = Runtime.from_id(Docker, "puck-sandbox-abc123")
       {:ok, result} = Runtime.exec(sandbox, "echo 'still here'")
   """
-  @spec from_id(module(), String.t(), map(), map()) :: Instance.t()
   def from_id(adapter_module, sandbox_id, config \\ %{}, metadata \\ %{}) do
     Instance.new(
       id: sandbox_id,
@@ -136,8 +133,6 @@ defmodule Puck.Sandbox.Runtime do
       {:ok, _} = Runtime.exec(sandbox, "echo 'hello' > file.txt")
       {:ok, result} = Runtime.exec(sandbox, "cat file.txt")
   """
-  @spec exec(Instance.t(), String.t(), keyword()) ::
-          {:ok, Puck.Sandbox.Runtime.ExecResult.t()} | {:error, term()}
   def exec(%Instance{} = sandbox, command, opts \\ []) do
     sandbox.adapter.exec(sandbox.id, command, merge_opts(sandbox.config, opts))
   end
@@ -149,7 +144,6 @@ defmodule Puck.Sandbox.Runtime do
 
       :ok = Runtime.terminate(sandbox)
   """
-  @spec terminate(Instance.t()) :: :ok | {:error, term()}
   def terminate(%Instance{} = sandbox) do
     sandbox.adapter.terminate(sandbox.id, merge_opts(sandbox.config, []))
   end
@@ -161,7 +155,6 @@ defmodule Puck.Sandbox.Runtime do
 
       :running = Runtime.status(sandbox)
   """
-  @spec status(Instance.t()) :: :running | :stopped | :terminated | :unknown
   def status(%Instance{} = sandbox) do
     sandbox.adapter.status(sandbox.id, merge_opts(sandbox.config, []))
   end
@@ -177,7 +170,6 @@ defmodule Puck.Sandbox.Runtime do
       {:ok, url} = Runtime.get_url(sandbox, 4000)
       # => "http://puck-sandbox-abc123:4000"
   """
-  @spec get_url(Instance.t(), integer()) :: {:ok, String.t()} | {:error, term()}
   def get_url(%Instance{metadata: metadata, adapter: adapter, id: id}, port) do
     resolved_port = get_in(metadata, [:port_map, port]) || port
     call_optional(adapter, :get_url, [id, resolved_port])
@@ -190,7 +182,6 @@ defmodule Puck.Sandbox.Runtime do
 
       {:ok, content} = Runtime.read_file(sandbox, "/app/code.py")
   """
-  @spec read_file(Instance.t(), String.t(), keyword()) :: {:ok, binary()} | {:error, term()}
   def read_file(%Instance{adapter: adapter, id: id, config: config}, path, opts \\ []) do
     call_optional(adapter, :read_file, [id, path, merge_opts(config, opts)])
   end
@@ -202,7 +193,6 @@ defmodule Puck.Sandbox.Runtime do
 
       :ok = Runtime.write_file(sandbox, "/app/code.py", "print('hello')")
   """
-  @spec write_file(Instance.t(), String.t(), binary(), keyword()) :: :ok | {:error, term()}
   def write_file(%Instance{adapter: adapter, id: id, config: config}, path, content, opts \\ []) do
     call_optional(adapter, :write_file, [id, path, content, merge_opts(config, opts)])
   end
@@ -217,7 +207,6 @@ defmodule Puck.Sandbox.Runtime do
         {"/app/lib.py", "def foo(): pass"}
       ])
   """
-  @spec write_files(Instance.t(), [{String.t(), binary()}], keyword()) :: :ok | {:error, term()}
   def write_files(
         %Instance{adapter: adapter, id: id, config: config} = sandbox,
         files,
@@ -256,7 +245,6 @@ defmodule Puck.Sandbox.Runtime do
       {:ok, metadata} = Runtime.await_ready(sandbox)
       {:ok, metadata} = Runtime.await_ready(sandbox, timeout: 30_000)
   """
-  @spec await_ready(Instance.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def await_ready(
         %Instance{adapter: adapter, id: id, config: config, metadata: metadata} = sandbox,
         opts \\ []
@@ -278,7 +266,6 @@ defmodule Puck.Sandbox.Runtime do
 
       {:ok, _} = Runtime.stop(sandbox)
   """
-  @spec stop(Instance.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def stop(%Instance{adapter: adapter, id: id, config: config}, opts \\ []) do
     call_optional(adapter, :stop, [id, merge_opts(config, opts)])
   end
@@ -292,7 +279,6 @@ defmodule Puck.Sandbox.Runtime do
 
       {:ok, _} = Runtime.start(sandbox)
   """
-  @spec start(Instance.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def start(%Instance{adapter: adapter, id: id, config: config}, opts \\ []) do
     call_optional(adapter, :start, [id, merge_opts(config, opts)])
   end
@@ -307,7 +293,6 @@ defmodule Puck.Sandbox.Runtime do
 
       {:ok, _} = Runtime.update(sandbox, %{image: "node:23-slim"})
   """
-  @spec update(Instance.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def update(%Instance{adapter: adapter, id: id, config: sandbox_config}, config, opts \\ []) do
     call_optional(adapter, :update, [id, config, merge_opts(sandbox_config, opts)])
   end
@@ -364,8 +349,6 @@ defmodule Puck.Sandbox.Runtime do
           |> Enum.filter(&match?(%{"type" => "text"}, &1))
           |> Enum.map_join(&Map.get(&1, "text"))
     """
-    @spec prompt(Instance.t(), prompt_content(), keyword()) ::
-            {:ok, Enumerable.t()} | {:error, term()}
     def prompt(%Instance{} = sandbox, content, opts \\ []) do
       port = Keyword.get(opts, :port, 4001)
       timeout = Keyword.get(opts, :timeout, 60_000)

@@ -99,7 +99,6 @@ defmodule Puck.Content do
       Content.text("Analyze this", %{cache: true})
 
   """
-  @spec text(String.t(), map()) :: Part.t()
   def text(content, metadata \\ %{}) when is_binary(content) do
     %Part{type: :text, text: content, metadata: metadata}
   end
@@ -112,7 +111,6 @@ defmodule Puck.Content do
       Content.image_url("https://example.com/photo.jpg")
 
   """
-  @spec image_url(String.t(), map()) :: Part.t()
   def image_url(url, metadata \\ %{}) when is_binary(url) do
     %Part{type: :image_url, url: url, metadata: metadata}
   end
@@ -129,7 +127,6 @@ defmodule Puck.Content do
       Content.image(bytes, "image/png")
 
   """
-  @spec image(binary(), String.t(), map()) :: Part.t()
   def image(data, media_type \\ "image/png", metadata \\ %{}) when is_binary(data) do
     %Part{type: :image, data: data, media_type: media_type, metadata: metadata}
   end
@@ -154,7 +151,6 @@ defmodule Puck.Content do
       Content.file(csv_bytes, "text/csv", filename: "data.csv")
 
   """
-  @spec file(binary(), String.t(), keyword()) :: Part.t()
   def file(data, media_type, opts \\ []) when is_binary(data) do
     %Part{
       type: :file,
@@ -174,7 +170,6 @@ defmodule Puck.Content do
       Content.audio(audio_bytes, "audio/mp3")
 
   """
-  @spec audio(binary(), String.t(), map()) :: Part.t()
   def audio(data, media_type \\ "audio/wav", metadata \\ %{}) when is_binary(data) do
     %Part{type: :audio, data: data, media_type: media_type, metadata: metadata}
   end
@@ -188,7 +183,6 @@ defmodule Puck.Content do
       Content.video(video_bytes, "video/mp4")
 
   """
-  @spec video(binary(), String.t(), map()) :: Part.t()
   def video(data, media_type \\ "video/mp4", metadata \\ %{}) when is_binary(data) do
     %Part{type: :video, data: data, media_type: media_type, metadata: metadata}
   end
@@ -205,7 +199,6 @@ defmodule Puck.Content do
       Content.new(:tool_result, text: "42", metadata: %{tool_id: "calc_1"})
 
   """
-  @spec new(atom(), keyword()) :: Part.t()
   def new(type, fields \\ []) when is_atom(type) do
     struct!(Part, Keyword.put(fields, :type, type))
   end
@@ -251,6 +244,5 @@ defmodule Puck.Content do
       #=> [%Part{type: :text, text: "{\"name\":\"Alice\",\"age\":30}"}]
 
   """
-  @spec wrap(term()) :: [Part.t()]
   def wrap(content), do: Wrappable.wrap(content)
 end
