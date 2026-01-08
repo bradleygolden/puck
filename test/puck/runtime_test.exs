@@ -461,20 +461,14 @@ defmodule Puck.RuntimeTest do
   end
 
   describe "BAML compaction compatibility" do
-    test "{:summarize, opts} raises for BAML backend without explicit client" do
+    test "{:summarize, opts} auto-detects BAML backend and uses built-in Summarize" do
       client =
         Client.new(
-          {Puck.Backends.Baml, function: "ExtractPerson"},
+          {Puck.Backends.Baml, function: "ExtractPerson", client_registry: %{primary: "test"}},
           auto_compaction: {:summarize, max_tokens: 100_000}
         )
 
-      context = Context.new()
-
-      # stream/4 calls maybe_auto_compact BEFORE the backend call,
-      # so the BAML detection triggers before BAML backend is invoked
-      assert_raise ArgumentError, ~r/BAML backend/, fn ->
-        Puck.stream(client, "Hello", context)
-      end
+      assert client.auto_compaction == {:summarize, max_tokens: 100_000}
     end
 
     test "{:summarize, opts} works for BAML when explicit client provided" do

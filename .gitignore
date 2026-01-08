@@ -25,3 +25,5 @@ puck-*.tar
 # Environment variables (API keys, secrets)
 .env
 .env.*
+
+/.hex-packages/

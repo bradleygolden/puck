@@ -234,10 +234,17 @@ defmodule Puck.Runtime do
             "auto_compaction: {:summarize, opts} requires :max_tokens option"
     end
 
-    summarize_client = get_summarize_client(client, opts)
+    base_config = %{
+      max_tokens: Keyword.fetch!(opts, :max_tokens),
+      keep_last: Keyword.get(opts, :keep_last, 3),
+      prompt: Keyword.get(opts, :prompt)
+    }
 
     config =
-      opts |> Map.new() |> Map.put(:client, summarize_client) |> Map.put_new(:keep_last, 3)
+      case Keyword.get(opts, :client) do
+        nil -> add_default_backend_config(base_config, client)
+        explicit_client -> Map.put(base_config, :client, explicit_client)
+      end
 
     {Puck.Compaction.Summarize, config}
   end
@@ -257,45 +264,13 @@ defmodule Puck.Runtime do
     {module, Map.new(opts)}
   end
 
-  defp get_summarize_client(client, opts) do
-    case Keyword.get(opts, :client) do
-      nil -> create_default_summarize_client(client)
-      explicit_client -> explicit_client
-    end
-  end
-
-  defp create_default_summarize_client(client) do
+  defp add_default_backend_config(config, client) do
     case client.backend do
-      {Puck.Backends.Baml, _config} ->
-        raise ArgumentError, """
-        auto_compaction: {:summarize, opts} requires explicit :client option when using BAML backend.
-
-        BAML functions are compile-time specific. To use summarization with BAML:
-
-        1. Define a summarization function in your .baml files
-        2. Create a client for it and pass via :client option:
-
-            summarize_client = Puck.Client.new({Puck.Backends.Baml, function: "SummarizeConversation"})
-
-            Puck.Client.new({Puck.Backends.Baml, function: "MyFunction"},
-              auto_compaction: {:summarize, max_tokens: 100_000, client: summarize_client}
-            )
-
-        Or use a ReqLLM client for summarization:
-
-            summarize_client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-haiku"})
-
-            Puck.Client.new({Puck.Backends.Baml, function: "MyFunction"},
-              auto_compaction: {:summarize, max_tokens: 100_000, client: summarize_client}
-            )
-
-        Alternatively, use :sliding_window which doesn't require LLM calls:
-
-            auto_compaction: {:sliding_window, window_size: 30}
-        """
+      {Puck.Backends.Baml, baml_config} ->
+        Map.put(config, :client_registry, baml_config[:client_registry])
 
       _other_backend ->
-        Client.new(client.backend)
+        Map.put(config, :client, Client.new(client.backend))
     end
   end
 

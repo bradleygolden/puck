@@ -12,6 +12,8 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     - `:function` - (required) The BAML function name to call
     - `:args` - Custom arguments map or function
     - `:args_format` - How to build args: `:auto`, `:messages`, `:text`, or `:raw`
+    - `:client_registry` - Runtime client registry for LLM provider configuration
+    - `:path` - Path to BAML source files (defaults to `baml_src`)
 
     ## Examples
 
@@ -183,8 +185,8 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       case BamlElixir.Collector.usage(collector) do
         %{} = usage ->
           %{
-            input_tokens: usage[:input_tokens] || 0,
-            output_tokens: usage[:output_tokens] || 0
+            input_tokens: usage["input_tokens"] || 0,
+            output_tokens: usage["output_tokens"] || 0
           }
 
         _ ->

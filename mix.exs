@@ -1,7 +1,7 @@
 defmodule Puck.MixProject do
   use Mix.Project
 
-  @version "0.2.1"
+  @version "0.2.2"
   @source_url "https://github.com/bradleygolden/puck"
 
   def project do
@@ -45,8 +45,7 @@ defmodule Puck.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"},
-      # For client registry support, override with baml_elixir_next (see README)
-      {:baml_elixir, "~> 1.0.0-pre.23", optional: true},
+      {:baml_elixir, "~> 1.0.0-pre.24", optional: true},
       {:plug, "~> 1.15", optional: true},
       {:req, "~> 0.5", optional: true},
       {:req_llm, "~> 1.0", optional: true},
@@ -88,7 +87,7 @@ defmodule Puck.MixProject do
       links: %{
         "GitHub" => @source_url
       },
-      files: ~w(lib LICENSE mix.exs README.md CHANGELOG.md)
+      files: ~w(lib priv LICENSE mix.exs README.md CHANGELOG.md)
     ]
   end
 
@@ -110,6 +109,7 @@ defmodule Puck.MixProject do
         ],
         Backends: [
           Puck.Backend,
+          Puck.Baml,
           Puck.Backends.Baml,
           Puck.Backends.Mock,
           Puck.Backends.ReqLLM

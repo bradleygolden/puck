@@ -150,5 +150,24 @@ defmodule Puck.Compaction.SummarizeTest do
       assert result.strategy == "summarize"
       assert is_binary(result.description)
     end
+
+    test "returns backend :baml when client_registry configured" do
+      result = Summarize.introspect(%{client_registry: %{primary: "test"}})
+
+      assert result.backend == :baml
+    end
+
+    test "returns backend :req_llm when client configured" do
+      client = Client.new({Mock, response: "test"})
+      result = Summarize.introspect(%{client: client})
+
+      assert result.backend == :req_llm
+    end
+
+    test "returns backend :req_llm as default" do
+      result = Summarize.introspect(%{})
+
+      assert result.backend == :req_llm
+    end
   end
 end

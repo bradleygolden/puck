@@ -123,12 +123,6 @@ def deps do
 end
 ```
 
-For enhanced BAML features like client registry, use `baml_elixir_next` instead:
-
-```elixir
-{:baml_elixir, "~> 1.0.0-pre", hex: :baml_elixir_next, override: true}
-```
-
 ## More Examples
 
 ### With System Prompt
@@ -165,6 +159,12 @@ client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
 # Sliding window (keeps last N messages)
 client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
   auto_compaction: {:sliding_window, window_size: 30}
+)
+
+# With BAML backend - uses built-in PuckSummarize automatically
+client = Puck.Client.new(
+  {Puck.Backends.Baml, function: "MyAgent", client_registry: registry},
+  auto_compaction: {:summarize, max_tokens: 100_000, keep_last: 5}
 )
 ```
 
@@ -244,20 +244,30 @@ client = Puck.Client.new({Puck.Backends.Baml, function: "ExtractPerson"})
 {:ok, result, _ctx} = Puck.call(client, "John is 30 years old")
 ```
 
-#### Enhanced BAML Features
+#### Runtime Client Registry
 
-For client registry support and other features ahead of the mainline `baml_elixir` library, use [`baml_elixir_next`](https://hex.pm/packages/baml_elixir_next):
+BAML functions reference named clients defined in `.baml` files. Use `client_registry` to configure LLM providers at runtime without hardcoding credentials:
 
 ```elixir
-def deps do
-  [
-    {:puck, "~> 0.2.0"},
-    {:baml_elixir, "~> 1.0.0-pre", hex: :baml_elixir_next, override: true}
-  ]
-end
+# Define your LLM provider configuration
+registry = %{
+  "clients" => [
+    %{
+      "name" => "MyClient",
+      "provider" => "anthropic",
+      "options" => %{"model" => "claude-sonnet-4-5"}
+    }
+  ],
+  "primary" => "MyClient"
+}
+
+# Pass to the BAML backend
+client = Puck.Client.new(
+  {Puck.Backends.Baml, function: "ExtractPerson", client_registry: registry}
+)
 ```
 
-`baml_elixir_next` is a forward-looking fork that implements BAML features before they land in the official library. It uses the same app name (`:baml_elixir`) and module names, so no code changes are required.
+The registry maps client names used in your `.baml` files to actual provider configurations. See [BAML Client Registry docs](https://docs.boundaryml.com/guide/baml-advanced/llm-client-registry) for supported providers and options.
 
 ### Mock (Testing)
 

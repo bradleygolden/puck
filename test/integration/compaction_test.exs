@@ -113,12 +113,22 @@ defmodule Puck.Integration.CompactionTest do
   describe "BAML sliding_window auto-compaction" do
     @describetag :baml
 
-    setup :check_ollama_available!
-
     setup do
+      client_registry = %{
+        "clients" => [
+          %{
+            "name" => "AnthropicHaiku",
+            "provider" => "anthropic",
+            "options" => %{"model" => "claude-haiku-4-5-20251001"}
+          }
+        ],
+        "primary" => "AnthropicHaiku"
+      }
+
       client =
         Puck.Client.new(
-          {Puck.Backends.Baml, function: "Classify", path: "test/support/baml_src"},
+          {Puck.Backends.Baml,
+           function: "Classify", path: "test/support/baml_src", client_registry: client_registry},
           auto_compaction: {:sliding_window, window_size: 4}
         )
 
@@ -156,19 +166,83 @@ defmodule Puck.Integration.CompactionTest do
     end
   end
 
+  describe "BAML auto-compaction with built-in Summarize" do
+    @describetag :baml
+
+    setup do
+      client_registry = %{
+        "clients" => [
+          %{
+            "name" => "AnthropicHaiku",
+            "provider" => "anthropic",
+            "options" => %{"model" => "claude-haiku-4-5-20251001"}
+          }
+        ],
+        "primary" => "AnthropicHaiku",
+        "PuckClient" => "AnthropicHaiku"
+      }
+
+      client =
+        Puck.Client.new(
+          {Puck.Backends.Baml,
+           function: "Classify", path: "test/support/baml_src", client_registry: client_registry},
+          auto_compaction: {:summarize, max_tokens: 100, keep_last: 2}
+        )
+
+      [client: client]
+    end
+
+    @tag timeout: 300_000
+    test "auto-detects BAML backend and uses built-in Summarize function", %{client: client} do
+      ctx = Puck.Context.new()
+
+      {:ok, _, ctx} = Puck.call(client, "I love this amazing product!", ctx)
+      {:ok, _, ctx} = Puck.call(client, "This product is terrible and broken.", ctx)
+
+      {:ok, _, ctx} = Puck.call(client, "It's okay I guess.", ctx)
+
+      messages = Puck.Context.messages(ctx)
+
+      # Compaction should have reduced message count (was 6, now <= 5)
+      assert length(messages) <= 5,
+             "Expected compaction to reduce messages, got #{length(messages)}"
+
+      # First message should be the summary (contains "Summary")
+      first_message = hd(messages)
+      first_content = extract_content_text(first_message.content)
+      assert first_message.role == :user
+
+      assert String.contains?(first_content, "Summary"),
+             "Expected summary message, got: #{first_content}"
+    end
+  end
+
   describe "BAML manual summarize compaction" do
     @describetag :baml
 
-    setup :check_ollama_available!
-
     setup do
+      client_registry = %{
+        "clients" => [
+          %{
+            "name" => "AnthropicHaiku",
+            "provider" => "anthropic",
+            "options" => %{"model" => "claude-haiku-4-5-20251001"}
+          }
+        ],
+        "primary" => "AnthropicHaiku"
+      }
+
       summarize_client =
         Puck.Client.new(
-          {Puck.Backends.Baml, function: "Summarize", path: "test/support/baml_src"}
+          {Puck.Backends.Baml,
+           function: "Summarize", path: "test/support/baml_src", client_registry: client_registry}
         )
 
       client =
-        Puck.Client.new({Puck.Backends.Baml, function: "Classify", path: "test/support/baml_src"})
+        Puck.Client.new(
+          {Puck.Backends.Baml,
+           function: "Classify", path: "test/support/baml_src", client_registry: client_registry}
+        )
 
       [client: client, summarize_client: summarize_client]
     end
