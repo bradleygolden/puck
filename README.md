@@ -117,7 +117,8 @@ def deps do
     # Optional features
     {:solid, "~> 0.15"},        # Liquid template syntax
     {:telemetry, "~> 1.2"},     # Observability
-    {:zoi, "~> 0.7"}            # Schema validation for structured outputs
+    {:zoi, "~> 0.7"},           # Schema validation for structured outputs
+    {:lua, "~> 0.4.0"}          # Lua sandbox for code execution
   ]
 end
 ```
@@ -426,6 +427,15 @@ Puck.Telemetry.attach_default_logger(level: :info)
 
 All events include relevant metadata (client, context, response, etc.). Durations are in native time units.
 See `Puck.Telemetry` module docs for full details.
+
+## Acknowledgments
+
+Puck builds on excellent open source projects:
+
+- [Lua](https://github.com/tv-labs/lua) by TV Labs - Ergonomic Elixir interface to Luerl
+- [Luerl](https://github.com/rvirding/luerl) by Robert Virding - Lua VM implemented in Erlang
+- [ReqLLM](https://github.com/nallwhy/req_llm) - Multi-provider LLM client for Elixir
+- [BAML](https://github.com/boundaryml/baml) - Type-safe structured outputs for LLMs
 
 ## License
 

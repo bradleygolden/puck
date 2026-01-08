@@ -130,13 +130,17 @@ defmodule Puck.MixProject do
           Puck.Compaction.Summarize,
           Puck.Compaction.SlidingWindow
         ],
-        Sandbox: [
-          Puck.Sandbox,
-          Puck.Sandbox.Adapter,
-          Puck.Sandbox.Template,
-          Puck.Sandbox.Instance,
-          Puck.Sandbox.ExecResult,
-          Puck.Sandbox.Adapters.Test
+        "Sandbox (Eval)": [
+          Puck.Sandbox.Eval,
+          Puck.Sandbox.Eval.Lua
+        ],
+        "Sandbox (Runtime)": [
+          Puck.Sandbox.Runtime,
+          Puck.Sandbox.Runtime.Adapter,
+          Puck.Sandbox.Runtime.Template,
+          Puck.Sandbox.Runtime.Instance,
+          Puck.Sandbox.Runtime.ExecResult,
+          Puck.Sandbox.Runtime.Adapters.Test
         ],
         Proxy: [
           Puck.Proxy.Sandbox
