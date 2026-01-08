@@ -190,4 +190,4 @@ jobs:
       run: mix compile
 
     - name: Generate documentation
-      run: mix docs
+      run: mix docs --warnings-as-errors

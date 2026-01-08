@@ -328,7 +328,7 @@ alias Puck.Sandbox.Eval
 
 ### LLM-Generated Code
 
-Use `Lua.schema/1` to let LLMs generate and execute Lua code. The schema includes guidance so the LLM produces valid code (e.g., always use `return`).
+Use `Puck.Sandbox.Eval.Lua.schema/1` to let LLMs generate and execute Lua code. The schema includes guidance so the LLM produces valid code (e.g., always use `return`).
 
 ```elixir
 alias Puck.Sandbox.Eval.Lua

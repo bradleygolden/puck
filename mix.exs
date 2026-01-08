@@ -70,6 +70,7 @@ defmodule Puck.MixProject do
         "format --check-formatted",
         "credo --strict",
         "dialyzer",
+        "docs --warnings-as-errors",
         "deps.unlock --check-unused",
         "deps.audit",
         "sobelow --config"
