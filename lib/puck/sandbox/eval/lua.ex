@@ -174,24 +174,30 @@ defmodule Puck.Sandbox.Eval.Lua do
     end
   end
 
-  defp run_lua(code, callbacks) do
-    lua = Lua.new()
+  if Code.ensure_loaded?(Lua) do
+    defp run_lua(code, callbacks) do
+      lua = Lua.new()
 
-    lua =
-      Enum.reduce(callbacks, lua, fn {name, func}, acc ->
-        Lua.set!(acc, [String.to_atom(name)], wrap_callback(func))
-      end)
+      lua =
+        Enum.reduce(callbacks, lua, fn {name, func}, acc ->
+          Lua.set!(acc, [String.to_atom(name)], wrap_callback(func))
+        end)
 
-    {results, _lua} = Lua.eval!(lua, code)
-    {:ok, unwrap_result(results)}
-  rescue
-    e -> {:error, e}
-  end
+      {results, _lua} = Lua.eval!(lua, code)
+      {:ok, unwrap_result(results)}
+    rescue
+      e -> {:error, e}
+    end
 
-  defp wrap_callback(func) do
-    fn args ->
-      result = apply(func, args)
-      [result]
+    defp wrap_callback(func) do
+      fn args ->
+        result = apply(func, args)
+        [result]
+      end
+    end
+  else
+    defp run_lua(_code, _callbacks) do
+      {:error, "Lua module not available. Add {:lua, \"~> 0.4.0\"} to your dependencies."}
     end
   end
 

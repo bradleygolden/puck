@@ -34,9 +34,7 @@ defmodule Puck.Sandbox.Runtime do
   Custom adapters can be created by implementing the `Puck.Sandbox.Runtime.Adapter` behaviour.
   """
 
-  alias Puck.Sandbox.Runtime.HealthPoller
   alias Puck.Sandbox.Runtime.Instance
-  alias Puck.Sandbox.Runtime.NDJSON
   alias Puck.Sandbox.Runtime.Template
 
   @type backend :: {module(), map() | keyword()}
@@ -297,16 +295,26 @@ defmodule Puck.Sandbox.Runtime do
     call_optional(adapter, :update, [id, config, merge_opts(sandbox_config, opts)])
   end
 
-  defp poll_health_endpoint(sandbox, opts) do
-    port = Keyword.get(opts, :port, 4001)
+  if Code.ensure_loaded?(Req) do
+    alias Puck.Sandbox.Runtime.HealthPoller
 
-    case get_url(sandbox, port) do
-      {:ok, url} -> HealthPoller.poll("#{url}/health", opts)
-      {:error, _} = error -> error
+    defp poll_health_endpoint(sandbox, opts) do
+      port = Keyword.get(opts, :port, 4001)
+
+      case get_url(sandbox, port) do
+        {:ok, url} -> HealthPoller.poll("#{url}/health", opts)
+        {:error, _} = error -> error
+      end
+    end
+  else
+    defp poll_health_endpoint(_sandbox, _opts) do
+      {:error, :not_implemented}
     end
   end
 
   if Code.ensure_loaded?(Req) do
+    alias Puck.Sandbox.Runtime.NDJSON
+
     @doc """
     Sends a prompt to the sandbox server and returns a stream of events.
 
