@@ -98,7 +98,7 @@ Add `puck` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:puck, "~> 0.1.0"}
+    {:puck, "~> 0.2.0"}
   ]
 end
 ```
@@ -108,7 +108,7 @@ Most features require optional dependencies. Add only what you need:
 ```elixir
 def deps do
   [
-    {:puck, "~> 0.1.0"},
+    {:puck, "~> 0.2.0"},
 
     # LLM backends (pick one or more)
     {:req_llm, "~> 1.0"},       # Multi-provider LLM support
@@ -120,6 +120,12 @@ def deps do
     {:zoi, "~> 0.7"}            # Schema validation for structured outputs
   ]
 end
+```
+
+For enhanced BAML features like client registry, use `baml_elixir_next` instead:
+
+```elixir
+{:baml_elixir, "~> 1.0.0-pre", hex: :baml_elixir_next, override: true}
 ```
 
 ## More Examples
@@ -236,6 +242,21 @@ For structured outputs and agentic patterns. See [BAML documentation](https://do
 client = Puck.Client.new({Puck.Backends.Baml, function: "ExtractPerson"})
 {:ok, result, _ctx} = Puck.call(client, "John is 30 years old")
 ```
+
+#### Enhanced BAML Features
+
+For client registry support and other features ahead of the mainline `baml_elixir` library, use [`baml_elixir_next`](https://hex.pm/packages/baml_elixir_next):
+
+```elixir
+def deps do
+  [
+    {:puck, "~> 0.2.0"},
+    {:baml_elixir, "~> 1.0.0-pre", hex: :baml_elixir_next, override: true}
+  ]
+end
+```
+
+`baml_elixir_next` is a forward-looking fork that implements BAML features before they land in the official library. It uses the same app name (`:baml_elixir`) and module names, so no code changes are required.
 
 ### Mock (Testing)
 

@@ -45,6 +45,7 @@ defmodule Puck.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"},
+      # For client registry support, override with baml_elixir_next (see README)
       {:baml_elixir, "~> 1.0.0-pre.23", optional: true},
       {:plug, "~> 1.15", optional: true},
       {:req, "~> 0.5", optional: true},
