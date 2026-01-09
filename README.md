@@ -301,7 +301,7 @@ defmodule MyApp.LoggingHooks do
 end
 
 client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
-  hooks: [Puck.Telemetry.Hooks, MyApp.LoggingHooks]
+  hooks: MyApp.LoggingHooks
 )
 ```
 
@@ -408,15 +408,14 @@ Requires `{:lua, "~> 0.4.0"}` and `{:zoi, "~> 0.7"}` in your dependencies.
 
 ## Telemetry
 
-Enable telemetry hooks for full observability:
+Telemetry events are emitted automatically when the `:telemetry` dependency is installed:
 
 ```elixir
-client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
-  hooks: Puck.Telemetry.Hooks
-)
-
-# Or attach a default logger
+# Attach a default logger for debugging
 Puck.Telemetry.attach_default_logger(level: :info)
+
+# Or attach your own handler
+:telemetry.attach_many("my-handler", Puck.Telemetry.event_names(), &handler/4, nil)
 ```
 
 ### Events
@@ -429,6 +428,7 @@ Puck.Telemetry.attach_default_logger(level: :info)
 | `[:puck, :stream, :start]` | `system_time` | Before streaming begins |
 | `[:puck, :stream, :chunk]` | — | For each streamed chunk |
 | `[:puck, :stream, :stop]` | `duration` | After streaming completes |
+| `[:puck, :stream, :exception]` | `duration` | On stream initialization failure |
 | `[:puck, :backend, :request]` | `system_time` | Before backend request |
 | `[:puck, :backend, :response]` | `system_time` | After backend response |
 | `[:puck, :compaction, :start]` | `system_time` | Before context compaction |

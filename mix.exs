@@ -115,8 +115,7 @@ defmodule Puck.MixProject do
           Puck.Backends.ReqLLM
         ],
         Hooks: [
-          Puck.Hooks,
-          Puck.Telemetry.Hooks
+          Puck.Hooks
         ],
         "Prompt Templates": [
           Puck.Prompt,

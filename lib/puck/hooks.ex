@@ -47,7 +47,7 @@ defmodule Puck.Hooks do
 
       # Multiple hooks execute in order
       Puck.call(client, "Hello", context,
-        hooks: [Puck.Telemetry.Hooks, MyApp.LoggingHooks]
+        hooks: [MyApp.LoggingHooks, MyApp.MetricsHooks]
       )
 
   """

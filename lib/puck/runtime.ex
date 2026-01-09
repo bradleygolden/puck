@@ -2,6 +2,7 @@ defmodule Puck.Runtime do
   @moduledoc false
 
   alias Puck.{Client, Compaction, Context, Hooks, Message, Response}
+  alias Puck.Runtime.Telemetry, as: T
 
   @doc """
   Executes a synchronous call to a client.
@@ -29,6 +30,8 @@ defmodule Puck.Runtime do
     hooks = Hooks.merge(client.hooks, hooks_opt)
     call_opts = [output_schema: output_schema, backend_opts: backend_opts]
 
+    start_time = T.start([:call], %{client: client, prompt: content, context: context})
+
     with {:cont, transformed_content} <-
            Hooks.invoke(hooks, :on_call_start, [client, content, context], content),
          {:ok, response, updated_context} <-
@@ -36,13 +39,28 @@ defmodule Puck.Runtime do
          {:cont, final_response} <-
            Hooks.invoke(hooks, :on_call_end, [client, response, updated_context], response) do
       final_context = maybe_auto_compact(client, updated_context, hooks)
+
+      T.stop([:call], start_time, %{
+        client: client,
+        response: final_response,
+        context: final_context
+      })
+
       {:ok, final_response, final_context}
     else
       {:halt, response} ->
         updated_context = add_exchange_to_context(context, content, response)
+
+        T.stop([:call], start_time, %{
+          client: client,
+          response: response,
+          context: updated_context
+        })
+
         {:ok, response, updated_context}
 
       {:error, reason} ->
+        T.exception([:call], start_time, reason, %{client: client, context: context})
         Hooks.invoke(hooks, :on_call_error, [client, reason, context])
         {:error, reason}
     end
@@ -78,11 +96,15 @@ defmodule Puck.Runtime do
 
     compacted_context = maybe_auto_compact(client, context, hooks)
 
+    start_time =
+      T.start([:stream], %{client: client, prompt: content, context: compacted_context})
+
     case Hooks.invoke(hooks, :on_stream_start, [client, content, compacted_context], content) do
       {:cont, transformed_content} ->
-        do_stream(client, transformed_content, compacted_context, hooks, stream_opts)
+        do_stream(client, transformed_content, compacted_context, hooks, stream_opts, start_time)
 
       {:error, reason} ->
+        T.exception([:stream], start_time, reason, %{client: client, context: compacted_context})
         {:error, reason}
     end
   end
@@ -92,15 +114,30 @@ defmodule Puck.Runtime do
     messages = build_messages(client, content, context)
     config = build_backend_config(client)
 
+    T.event([:backend, :request], %{system_time: System.system_time()}, %{
+      config: config,
+      messages: messages
+    })
+
     with {:cont, transformed_messages} <-
            Hooks.invoke(hooks, :on_backend_request, [config, messages], messages),
          {:ok, response} <- backend_module.call(config, transformed_messages, opts),
          {:cont, transformed_response} <-
            Hooks.invoke(hooks, :on_backend_response, [config, response], response) do
+      T.event([:backend, :response], %{system_time: System.system_time()}, %{
+        config: config,
+        response: transformed_response
+      })
+
       updated_context = add_exchange_to_context(context, content, transformed_response)
       {:ok, transformed_response, updated_context}
     else
       {:halt, response} ->
+        T.event([:backend, :response], %{system_time: System.system_time()}, %{
+          config: config,
+          response: response
+        })
+
         updated_context = add_exchange_to_context(context, content, response)
         {:ok, response, updated_context}
 
@@ -109,15 +146,20 @@ defmodule Puck.Runtime do
     end
   end
 
-  defp do_stream(client, content, context, hooks, opts) do
+  defp do_stream(client, content, context, hooks, opts, start_time) do
     backend_module = Client.backend_module(client)
     messages = build_messages(client, content, context)
     config = build_backend_config(client)
 
+    T.event([:backend, :request], %{system_time: System.system_time()}, %{
+      config: config,
+      messages: messages
+    })
+
     with {:cont, transformed_messages} <-
            Hooks.invoke(hooks, :on_backend_request, [config, messages], messages),
          {:ok, stream} <- backend_module.stream(config, transformed_messages, opts) do
-      instrumented_stream = instrument_stream(stream, client, context, hooks)
+      instrumented_stream = instrument_stream(stream, client, context, hooks, start_time)
       updated_context = Context.add_message(context, :user, content)
       {:ok, instrumented_stream, updated_context}
     else
@@ -129,15 +171,19 @@ defmodule Puck.Runtime do
     end
   end
 
-  defp instrument_stream(stream, client, context, hooks) do
+  defp instrument_stream(stream, client, context, hooks, start_time) do
     stream
     |> Stream.each(fn chunk ->
+      T.event([:stream, :chunk], %{}, %{client: client, chunk: chunk, context: context})
       Hooks.invoke(hooks, :on_stream_chunk, [client, chunk, context])
     end)
     |> Stream.transform(
       fn -> :ok end,
       fn chunk, acc -> {[chunk], acc} end,
-      fn _acc -> Hooks.invoke(hooks, :on_stream_end, [client, context]) end
+      fn _acc ->
+        T.stop([:stream], start_time, %{client: client, context: context})
+        Hooks.invoke(hooks, :on_stream_end, [client, context])
+      end
     )
   end
 
@@ -274,41 +320,35 @@ defmodule Puck.Runtime do
     end
   end
 
-  if Code.ensure_loaded?(:telemetry) do
-    defp emit_compaction_start(context, strategy, config) do
-      :telemetry.execute(
-        [:puck, :compaction, :start],
-        %{system_time: System.system_time()},
-        %{context: context, strategy: strategy, config: config}
-      )
-    end
+  defp emit_compaction_start(context, strategy, config) do
+    T.event([:compaction, :start], %{system_time: System.system_time()}, %{
+      context: context,
+      strategy: strategy,
+      config: config
+    })
+  end
 
-    defp emit_compaction_stop(start_time, messages_before, compacted, strategy) do
-      duration = System.monotonic_time() - start_time
+  defp emit_compaction_stop(start_time, messages_before, compacted, strategy) do
+    duration = System.monotonic_time() - start_time
 
-      :telemetry.execute(
-        [:puck, :compaction, :stop],
-        %{
-          duration: duration,
-          messages_before: messages_before,
-          messages_after: Context.message_count(compacted)
-        },
-        %{context: compacted, strategy: strategy}
-      )
-    end
+    T.event(
+      [:compaction, :stop],
+      %{
+        duration: duration,
+        messages_before: messages_before,
+        messages_after: Context.message_count(compacted)
+      },
+      %{context: compacted, strategy: strategy}
+    )
+  end
 
-    defp emit_compaction_error(start_time, context, reason, strategy) do
-      duration = System.monotonic_time() - start_time
+  defp emit_compaction_error(start_time, context, reason, strategy) do
+    duration = System.monotonic_time() - start_time
 
-      :telemetry.execute(
-        [:puck, :compaction, :error],
-        %{duration: duration},
-        %{context: context, strategy: strategy, reason: reason}
-      )
-    end
-  else
-    defp emit_compaction_start(_context, _strategy, _config), do: :ok
-    defp emit_compaction_stop(_start_time, _messages_before, _compacted, _strategy), do: :ok
-    defp emit_compaction_error(_start_time, _context, _reason, _strategy), do: :ok
+    T.event([:compaction, :error], %{duration: duration}, %{
+      context: context,
+      strategy: strategy,
+      reason: reason
+    })
   end
 end

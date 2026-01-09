@@ -12,10 +12,7 @@ defmodule Puck.Integration.TelemetryTest do
 
     setup do
       client =
-        Puck.Client.new(
-          {Puck.Backends.Baml, function: "Classify", path: "test/support/baml_src"},
-          hooks: [Puck.Telemetry.Hooks]
-        )
+        Puck.Client.new({Puck.Backends.Baml, function: "Classify", path: "test/support/baml_src"})
 
       [client: client]
     end
@@ -128,7 +125,6 @@ defmodule Puck.Integration.TelemetryTest do
       client =
         Puck.Client.new(
           {Puck.Backends.ReqLLM, "anthropic:claude-haiku-4-5-20251001"},
-          hooks: [Puck.Telemetry.Hooks],
           system_prompt: "Classify text as positive, negative, or neutral. Reply with one word."
         )
 

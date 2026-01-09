@@ -3,11 +3,8 @@ if Code.ensure_loaded?(:telemetry) do
     @moduledoc """
     Telemetry integration for observability.
 
-    ## Usage
-
-        client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
-          hooks: Puck.Telemetry.Hooks
-        )
+    Puck automatically emits telemetry events when the `:telemetry` dependency
+    is installed. No configuration is required.
 
     ## Events
 
@@ -95,6 +92,22 @@ if Code.ensure_loaded?(:telemetry) do
 
       * `:client` - The `Puck.Client` struct.
       * `:context` - The `Puck.Context` struct.
+
+    ### Stream Exception
+
+    `[:puck, :stream, :exception]` - Executed when streaming initialization fails.
+
+    #### Measurements
+
+      * `:duration` - Time taken before failure in native units.
+
+    #### Metadata
+
+      * `:client` - The `Puck.Client` struct.
+      * `:context` - The `Puck.Context` struct.
+      * `:kind` - The exception type (`:error`, `:exit`, or `:throw`).
+      * `:reason` - The error reason.
+      * `:stacktrace` - The stacktrace (may be empty).
 
     ### Backend Request
 
@@ -192,6 +205,7 @@ if Code.ensure_loaded?(:telemetry) do
         [:puck, :stream, :start],
         [:puck, :stream, :chunk],
         [:puck, :stream, :stop],
+        [:puck, :stream, :exception],
         [:puck, :backend, :request],
         [:puck, :backend, :response],
         [:puck, :compaction, :start],

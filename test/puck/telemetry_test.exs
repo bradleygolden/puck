@@ -30,7 +30,7 @@ if Code.ensure_loaded?(:telemetry) do
       end
     end
 
-    describe "Puck.Telemetry.Hooks" do
+    describe "automatic telemetry" do
       setup do
         EventTracker.start()
 
@@ -52,10 +52,8 @@ if Code.ensure_loaded?(:telemetry) do
         :ok
       end
 
-      test "emits call lifecycle events with duration" do
-        client =
-          Client.new({Puck.Backends.Mock, response: "Hello!"}, hooks: Puck.Telemetry.Hooks)
-
+      test "emits call lifecycle events automatically" do
+        client = Client.new({Puck.Backends.Mock, response: "Hello!"})
         context = Context.new()
 
         {:ok, _response, _context} = Puck.call(client, "Hi!", context)
@@ -72,9 +70,7 @@ if Code.ensure_loaded?(:telemetry) do
       end
 
       test "emits call exception event on failure with metadata" do
-        client =
-          Client.new({Puck.Backends.Mock, error: :rate_limited}, hooks: Puck.Telemetry.Hooks)
-
+        client = Client.new({Puck.Backends.Mock, error: :rate_limited})
         context = Context.new()
 
         {:error, :rate_limited} = Puck.call(client, "Hi!", context)
@@ -90,12 +86,8 @@ if Code.ensure_loaded?(:telemetry) do
         assert is_list(metadata.stacktrace)
       end
 
-      test "emits stream lifecycle events with duration" do
-        client =
-          Client.new({Puck.Backends.Mock, stream_chunks: ["Hello", " ", "world"]},
-            hooks: Puck.Telemetry.Hooks
-          )
-
+      test "emits stream lifecycle events automatically" do
+        client = Client.new({Puck.Backends.Mock, stream_chunks: ["Hello", " ", "world"]})
         context = Context.new()
 
         {:ok, stream, _context} = Puck.stream(client, "Hi!", context)
@@ -112,6 +104,30 @@ if Code.ensure_loaded?(:telemetry) do
         {_event, measurements, _metadata} = EventTracker.get_event([:puck, :stream, :stop])
         assert is_integer(measurements.duration)
         assert measurements.duration >= 0
+      end
+
+      test "emits stream exception event on hook failure" do
+        defmodule FailingStreamHook do
+          @behaviour Puck.Hooks
+
+          def on_stream_start(_client, _content, _context) do
+            {:error, :stream_blocked}
+          end
+        end
+
+        client = Client.new({Puck.Backends.Mock, stream_chunks: ["Hello"]})
+        context = Context.new()
+
+        {:error, :stream_blocked} = Puck.stream(client, "Hi!", context, hooks: FailingStreamHook)
+
+        assert EventTracker.has_event?([:puck, :stream, :start])
+        assert EventTracker.has_event?([:puck, :stream, :exception])
+
+        {_event, measurements, metadata} = EventTracker.get_event([:puck, :stream, :exception])
+        assert is_integer(measurements.duration)
+        assert metadata.kind == :error
+        assert metadata.reason == :stream_blocked
+        assert is_list(metadata.stacktrace)
       end
     end
 
