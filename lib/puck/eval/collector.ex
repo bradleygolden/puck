@@ -19,12 +19,15 @@ defmodule Puck.Eval.Collector do
 
   1. Attaches handlers to call and stream telemetry events
   2. Runs the provided function
-  3. Collects telemetry events sent to this process
-  4. Matches start/stop events to build Steps
+  3. Collects telemetry events from this process and any spawned child processes
+  4. Matches start/stop events by emitting process to build Steps
   5. Returns the result and the captured Trajectory
 
   The Collector uses process isolation - each `collect/1` call has its own
   unique handler ID, so concurrent collections don't interfere with each other.
+  Child processes spawned during collection (via `Task.async`, etc.) are
+  automatically tracked as long as they inherit the `$ancestors` process
+  dictionary key (which OTP processes do by default).
 
   ## Requirements
 
@@ -100,11 +103,16 @@ defmodule Puck.Eval.Collector do
     :telemetry.detach(handler_id)
   end
 
+  defp collecting_process?(pid) do
+    self() == pid or pid in (Process.get(:"$ancestors") || [])
+  end
+
   @doc false
   def handle_event(@call_start, measurements, metadata, %{ref: ref, pid: pid}) do
-    if self() == pid do
+    if collecting_process?(pid) do
       event = %{
         type: :start,
+        emitter: self(),
         system_time: measurements[:system_time],
         prompt: metadata[:prompt],
         client: metadata[:client],
@@ -116,9 +124,10 @@ defmodule Puck.Eval.Collector do
   end
 
   def handle_event(@call_stop, measurements, metadata, %{ref: ref, pid: pid}) do
-    if self() == pid do
+    if collecting_process?(pid) do
       event = %{
         type: :stop,
+        emitter: self(),
         duration: measurements[:duration],
         response: metadata[:response],
         client: metadata[:client],
@@ -130,9 +139,10 @@ defmodule Puck.Eval.Collector do
   end
 
   def handle_event(@stream_start, measurements, metadata, %{ref: ref, pid: pid}) do
-    if self() == pid do
+    if collecting_process?(pid) do
       event = %{
         type: :stream_start,
+        emitter: self(),
         system_time: measurements[:system_time],
         prompt: metadata[:prompt],
         client: metadata[:client],
@@ -144,9 +154,10 @@ defmodule Puck.Eval.Collector do
   end
 
   def handle_event(@stream_chunk, _measurements, metadata, %{ref: ref, pid: pid}) do
-    if self() == pid do
+    if collecting_process?(pid) do
       event = %{
         type: :stream_chunk,
+        emitter: self(),
         chunk: metadata[:chunk],
         client: metadata[:client]
       }
@@ -156,9 +167,10 @@ defmodule Puck.Eval.Collector do
   end
 
   def handle_event(@stream_stop, measurements, metadata, %{ref: ref, pid: pid}) do
-    if self() == pid do
+    if collecting_process?(pid) do
       event = %{
         type: :stream_stop,
+        emitter: self(),
         duration: measurements[:duration],
         client: metadata[:client],
         context: metadata[:context]
@@ -186,7 +198,8 @@ defmodule Puck.Eval.Collector do
 
   defp build_steps_from_events(events) do
     events
-    |> pair_events()
+    |> Enum.group_by(& &1.emitter)
+    |> Enum.flat_map(fn {_emitter, emitter_events} -> pair_events(emitter_events) end)
     |> Enum.map(&event_pair_to_step/1)
   end
 

@@ -135,5 +135,63 @@ defmodule Puck.Eval.CollectorTest do
       assert stream_step.output == "streamed"
       assert stream_step.metadata[:streamed] == true
     end
+
+    test "captures calls from child processes (Task.async)" do
+      client = Puck.Client.new({Puck.Backends.Mock, response: "from child"})
+
+      {result, trajectory} =
+        Collector.collect(fn ->
+          task =
+            Task.async(fn ->
+              {:ok, response, _ctx} = Puck.call(client, "child process call")
+              response.content
+            end)
+
+          Task.await(task)
+        end)
+
+      assert result == "from child"
+      assert trajectory.total_steps == 1
+      assert [step] = trajectory.steps
+      assert step.output == "from child"
+    end
+
+    test "captures calls from multiple child processes" do
+      client = Puck.Client.new({Puck.Backends.Mock, response: "response"})
+
+      {_result, trajectory} =
+        Collector.collect(fn ->
+          tasks =
+            Enum.map(1..3, fn i ->
+              Task.async(fn ->
+                {:ok, response, _ctx} = Puck.call(client, "call #{i}")
+                response.content
+              end)
+            end)
+
+          Enum.map(tasks, &Task.await/1)
+        end)
+
+      assert trajectory.total_steps == 3
+    end
+
+    test "captures calls from mixed parent and child processes" do
+      client = Puck.Client.new({Puck.Backends.Mock, response: "response"})
+
+      {_result, trajectory} =
+        Collector.collect(fn ->
+          {:ok, _, _} = Puck.call(client, "parent call")
+
+          task =
+            Task.async(fn ->
+              {:ok, response, _ctx} = Puck.call(client, "child call")
+              response.content
+            end)
+
+          Task.await(task)
+        end)
+
+      assert trajectory.total_steps == 2
+    end
   end
 end
