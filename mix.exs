@@ -144,6 +144,15 @@ defmodule Puck.MixProject do
         ],
         Proxy: [
           Puck.Proxy.Sandbox
+        ],
+        Eval: [
+          Puck.Eval,
+          Puck.Eval.Trajectory,
+          Puck.Eval.Step,
+          Puck.Eval.Collector,
+          Puck.Eval.Grader,
+          Puck.Eval.Graders,
+          Puck.Eval.Result
         ]
       ]
     ]

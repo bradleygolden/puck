@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Puck.Eval` - Evaluation primitives for testing LLM agents
+- `Puck.Eval.Trajectory` - Captures execution history (steps, tokens, duration)
+- `Puck.Eval.Step` - Single LLM call within a trajectory
+- `Puck.Eval.Collector` - Telemetry-based trajectory capture (zero configuration)
+- `Puck.Eval.Grader` - Behaviour for scoring agent outputs
+- `Puck.Eval.Graders` - Built-in graders for common evaluation patterns
+- `Puck.Eval.Result` - Aggregates grader results with pass/fail status
+
 ## [0.2.3] - 2026-01-09
 
 ### Added

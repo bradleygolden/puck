@@ -1,35 +1,50 @@
 # Puck
 
-Build LLM agents in Elixir. No magic. Just loops.
+Agent primitives for Elixir.
 
-The best AI agents shipped to production share a secret: they're just LLMs calling tools in a loop. Puck gives you the primitives to build exactly that — with any provider, any model, full observability.
-
-## Philosophy
-
-Most LLM frameworks add complexity you don't need. Puck takes a different approach:
-
-- **Agents are loops** — An LLM, tools, and a feedback loop. That's it.
-- **No hard-coded orchestration** — You control the flow, not the framework.
-- **Swap backends** - ReqLLM, BamlElixir, or implement your own
-- **Swap providers** — Anthropic to OpenAI to Bedrock
-- **Observe everything** — Lifecycle hooks for caching, guardrails, logging.
-
-## Quick Start
-
-Three lines to your first LLM call:
+The best AI agents shipped to production share a secret: they're just LLMs calling tools in a loop. Puck gives you the primitives to build exactly that.
 
 ```elixir
 client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
 {:ok, response, _ctx} = Puck.call(client, "Hello!")
-IO.puts(response.content)
 ```
+
+One function. Any provider. Build whatever you want on top.
+
+## The Primitives
+
+Seven building blocks. Compose them however you need:
+
+| Primitive | Purpose |
+|-----------|---------|
+| `Puck.Client` | Configure backend, model, system prompt |
+| `Puck.Context` | Multi-turn conversation state |
+| `Puck.call/4` | One function to call any LLM |
+| `Puck.Hooks` | Observe and transform at every stage |
+| `Puck.Compaction` | Handle long conversations |
+| `Puck.Eval` | Capture trajectories, grade outputs |
+| `Puck.Sandbox` | Execute LLM-generated code safely |
+
+No orchestration. No hidden control flow. You write the loop.
+
+## Why Primitives?
+
+Most LLM libraries are frameworks. They give you abstractions that work until they don't—then you fight the framework.
+
+Puck takes the opposite approach:
+
+- **You control the loop** — Pattern match on struct types. Decide what happens next.
+- **Swap anything** — Backends, providers, models. Same interface.
+- **See everything** — Hooks and telemetry at every stage.
+- **Test everything** — Capture trajectories. Apply graders.
+
+## Quick Start
 
 ### Structured Outputs
 
-Define action structs. Create a union schema. Pattern match on the struct type:
+Define action structs. Create a union schema. Pattern match:
 
 ```elixir
-# Each action is its own struct with a `type` discriminator
 defmodule LookupContact do
   defstruct type: "lookup_contact", name: nil
 end
@@ -42,7 +57,6 @@ defmodule Done do
   defstruct type: "done", message: nil
 end
 
-# Build a union schema with literal type discriminators
 def schema do
   Zoi.union([
     Zoi.struct(LookupContact, %{
@@ -62,7 +76,7 @@ def schema do
 end
 ```
 
-> **Note:** `coerce: true` is required because LLM backends return raw maps. This option tells Zoi to convert the map into your struct.
+> **Note:** `coerce: true` is required because LLM backends return raw maps. This tells Zoi to convert the map into your struct.
 
 ### Build an Agent Loop
 
@@ -80,20 +94,7 @@ end
 
 That's it. Pattern match on struct types. Works with any backend.
 
-## Features
-
-- **Any provider, one interface** — Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock via ReqLLM
-- **Real-time streaming** — Stream tokens as they arrive
-- **Multi-modal** — Text, images, files, audio, video
-- **You build the loop** — Response-driven control flow, not framework magic
-- **Types, not strings** — Structured outputs via ReqLLM and BAML
-- **Observe everything** — Lifecycle hooks for caching, guardrails, logging
-- **Sandboxed execution** — Run LLM-generated Lua code safely with callbacks
-- **Telemetry built-in** — Full observability with `:telemetry` events
-
 ## Installation
-
-Add `puck` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
@@ -123,102 +124,6 @@ def deps do
 end
 ```
 
-## More Examples
-
-### With System Prompt
-
-```elixir
-client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
-  system_prompt: "You are a translator. Translate to Spanish."
-)
-{:ok, response, _ctx} = Puck.call(client, "Translate: Hello, world!")
-```
-
-### Multi-turn Conversations
-
-```elixir
-client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
-  system_prompt: "You are a helpful assistant."
-)
-
-context = Puck.Context.new()
-{:ok, resp1, context} = Puck.call(client, "What is Elixir?", context)
-{:ok, resp2, context} = Puck.call(client, "How is it different from Ruby?", context)
-```
-
-### Context Compaction
-
-Long conversations can exceed context limits. Enable auto-compaction to handle this automatically:
-
-```elixir
-# Summarize when token threshold exceeded
-client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
-  auto_compaction: {:summarize, max_tokens: 100_000, keep_last: 5}
-)
-
-# Sliding window (keeps last N messages)
-client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
-  auto_compaction: {:sliding_window, window_size: 30}
-)
-
-# With BAML backend - uses built-in PuckSummarize automatically
-client = Puck.Client.new(
-  {Puck.Backends.Baml, function: "MyAgent", client_registry: registry},
-  auto_compaction: {:summarize, max_tokens: 100_000, keep_last: 5}
-)
-```
-
-Or compact manually:
-
-```elixir
-{:ok, compacted} = Puck.Context.compact(context, {Puck.Compaction.SlidingWindow, %{
-  window_size: 20
-}})
-```
-
-### Streaming
-
-```elixir
-client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
-{:ok, stream, _ctx} = Puck.stream(client, "Tell me a story")
-
-Enum.each(stream, fn chunk ->
-  IO.write(chunk.content)
-end)
-```
-
-### Multi-modal Content
-
-```elixir
-alias Puck.Content
-
-client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
-
-{:ok, response, _ctx} = Puck.call(client, [
-  Content.text("What's in this image?"),
-  Content.image_url("https://example.com/photo.png")
-])
-
-# Or with binary data
-image_bytes = File.read!("photo.png")
-{:ok, response, _ctx} = Puck.call(client, [
-  Content.text("Describe this image"),
-  Content.image(image_bytes, "image/png")
-])
-```
-
-### Few-shot Prompting
-
-```elixir
-client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
-
-{:ok, response, _ctx} = Puck.call(client, [
-  %{role: :user, content: "Translate: Hello"},
-  %{role: :assistant, content: "Hola"},
-  %{role: :user, content: "Translate: Goodbye"}
-])
-```
-
 ## Backends
 
 ### ReqLLM
@@ -226,18 +131,17 @@ client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
 Multi-provider LLM support. Model format is `"provider:model"`:
 
 ```elixir
-# Create a client
 client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
 
 # With options
 client = Puck.Client.new({Puck.Backends.ReqLLM, model: "anthropic:claude-sonnet-4-5", temperature: 0.7})
 ```
 
-See ReqLLM documentation for supported providers and configuration options.
+Supports Anthropic, OpenAI, Google, OpenRouter, AWS Bedrock. See ReqLLM documentation for details.
 
 ### BAML
 
-For structured outputs and agentic patterns. See [BAML documentation](https://docs.boundaryml.com/) for details on building agentic loops.
+For structured outputs and agentic patterns:
 
 ```elixir
 client = Puck.Client.new({Puck.Backends.Baml, function: "ExtractPerson"})
@@ -246,10 +150,9 @@ client = Puck.Client.new({Puck.Backends.Baml, function: "ExtractPerson"})
 
 #### Runtime Client Registry
 
-BAML functions reference named clients defined in `.baml` files. Use `client_registry` to configure LLM providers at runtime without hardcoding credentials:
+Configure LLM providers at runtime without hardcoding credentials:
 
 ```elixir
-# Define your LLM provider configuration
 registry = %{
   "clients" => [
     %{
@@ -261,15 +164,14 @@ registry = %{
   "primary" => "MyClient"
 }
 
-# Pass to the BAML backend
 client = Puck.Client.new(
   {Puck.Backends.Baml, function: "ExtractPerson", client_registry: registry}
 )
 ```
 
-The registry maps client names used in your `.baml` files to actual provider configurations. See [BAML Client Registry docs](https://docs.boundaryml.com/guide/baml-advanced/llm-client-registry) for supported providers and options.
+See [BAML Client Registry docs](https://docs.boundaryml.com/guide/baml-advanced/llm-client-registry) for supported providers.
 
-### Mock (Testing)
+### Mock
 
 For deterministic tests:
 
@@ -278,9 +180,47 @@ client = Puck.Client.new({Puck.Backends.Mock, response: "Test response"})
 {:ok, response, _ctx} = Puck.call(client, "Hello!")
 ```
 
-## Lifecycle Hooks
+## Context
 
-Hooks let you observe and transform at every stage — without touching business logic:
+Multi-turn conversations with automatic state management:
+
+```elixir
+client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+  system_prompt: "You are a helpful assistant."
+)
+
+context = Puck.Context.new()
+{:ok, resp1, context} = Puck.call(client, "What is Elixir?", context)
+{:ok, resp2, context} = Puck.call(client, "How is it different from Ruby?", context)
+```
+
+### Compaction
+
+Long conversations can exceed context limits. Handle this automatically:
+
+```elixir
+# Summarize when token threshold exceeded
+client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+  auto_compaction: {:summarize, max_tokens: 100_000, keep_last: 5}
+)
+
+# Sliding window (keeps last N messages)
+client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+  auto_compaction: {:sliding_window, window_size: 30}
+)
+```
+
+Or compact manually:
+
+```elixir
+{:ok, compacted} = Puck.Context.compact(context, {Puck.Compaction.SlidingWindow, %{
+  window_size: 20
+}})
+```
+
+## Hooks
+
+Observe and transform at every stage—without touching business logic:
 
 ```elixir
 defmodule MyApp.LoggingHooks do
@@ -313,17 +253,81 @@ Available hooks:
 - `on_backend_request/2`, `on_backend_response/2` — Backend request/response
 - `on_compaction_start/3`, `on_compaction_end/2` — Compaction lifecycle
 
-## Sandboxes
+## Eval
+
+Primitives for evaluating agents. Capture what happened. Grade the results.
+
+### Capture Trajectory
+
+Every `Puck.call` becomes a step:
+
+```elixir
+alias Puck.Eval.{Collector, Graders}
+
+{output, trajectory} = Collector.collect(fn ->
+  MyAgent.run("Find John's email")
+end)
+
+trajectory.total_steps       # => 2
+trajectory.total_tokens      # => 385
+trajectory.total_duration_ms # => 1250
+```
+
+### Apply Graders
+
+```elixir
+result = Puck.Eval.grade(output, trajectory, [
+  Graders.contains("john@example.com"),
+  Graders.max_steps(5),
+  Graders.max_tokens(10_000)
+])
+
+result.passed?  # => true
+```
+
+### Built-in Graders
+
+```elixir
+# Output graders
+Graders.contains("substring")
+Graders.matches(~r/pattern/)
+Graders.equals(expected)
+Graders.satisfies(fn x -> ... end)
+
+# Trajectory graders
+Graders.max_steps(n)
+Graders.max_tokens(n)
+Graders.max_duration_ms(n)
+
+# Step output graders
+Graders.output_produced(LookupContact)
+Graders.output_produced(LookupContact, times: 2)
+Graders.output_matches(fn %LookupContact{name: "John"} -> true; _ -> false end)
+Graders.output_not_produced(DeleteContact)
+Graders.output_sequence([Search, Confirm, Done])
+```
+
+### Custom Graders
+
+Graders are just functions:
+
+```elixir
+my_grader = fn output, trajectory ->
+  if trajectory.total_tokens < 1000 do
+    :pass
+  else
+    {:fail, "Used #{trajectory.total_tokens} tokens, expected < 1000"}
+  end
+end
+```
+
+## Sandbox
 
 Execute LLM-generated code safely with callbacks to your application:
 
 ```elixir
 alias Puck.Sandbox.Eval
 
-# Simple eval
-{:ok, result} = Eval.eval(:lua, "return 1 + 2")
-
-# With callbacks to your application
 {:ok, result} = Eval.eval(:lua, """
   local products = search("laptop")
   local cheap = {}
@@ -336,107 +340,70 @@ alias Puck.Sandbox.Eval
 })
 ```
 
-### LLM-Generated Code
-
-Use `Puck.Sandbox.Eval.Lua.schema/1` to let LLMs generate and execute Lua code. The schema includes guidance so the LLM produces valid code (e.g., always use `return`).
-
-```elixir
-alias Puck.Sandbox.Eval.Lua
-
-defmodule Done do
-  defstruct type: "done", message: nil
-end
-
-# Each function is self-contained with its signature in the description.
-# The LLM selects which functions to use - actual calls happen in Lua code.
-@double_func Zoi.object(
-  %{name: Zoi.literal("double")},
-  strict: true,
-  coerce: true,
-  description: "double(n: number) -> number: Doubles the input number"
-)
-
-@add_func Zoi.object(
-  %{name: Zoi.literal("add")},
-  strict: true,
-  coerce: true,
-  description: "add(a: number, b: number) -> number: Adds two numbers together"
-)
-
-@func_spec Zoi.union([@double_func, @add_func])
-
-defp schema do
-  Zoi.union([
-    Lua.schema(@func_spec),
-    Zoi.struct(Done, %{
-      type: Zoi.literal("done"),
-      message: Zoi.string(description: "Final response to the user")
-    }, coerce: true)
-  ])
-end
-
-# Elixir callbacks the LLM can invoke via Lua
-@callbacks %{
-  "double" => fn n -> n * 2 end,
-  "add" => fn a, b -> a + b end
-}
-
-defp loop(client, input, ctx) do
-  {:ok, %{content: action}, ctx} = Puck.call(client, input, ctx, output_schema: schema())
-
-  case action do
-    %Lua.ExecuteCode{code: code} ->
-      {:ok, result} = Puck.Sandbox.Eval.eval(:lua, code, callbacks: @callbacks)
-      loop(client, "Result: #{inspect(result)}", ctx)
-
-    %Done{message: msg} ->
-      {:ok, msg}
-  end
-end
-
-# Start the agent
-client = Puck.Client.new(
-  {Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
-  system_prompt: "You are a calculator. Use execute_lua for calculations, done when finished."
-)
-
-{:ok, answer} = loop(client, "Double the number 21", Puck.Context.new())
-# => {:ok, "The result is 42."}
-```
-
-Requires `{:lua, "~> 0.4.0"}` and `{:zoi, "~> 0.7"}` in your dependencies.
+Use `Puck.Sandbox.Eval.Lua.schema/1` to let LLMs generate Lua code as a structured output. Requires `{:lua, "~> 0.4.0"}`.
 
 ## Telemetry
 
-Telemetry events are emitted automatically when the `:telemetry` dependency is installed:
+Events are emitted automatically when `:telemetry` is installed:
 
 ```elixir
-# Attach a default logger for debugging
 Puck.Telemetry.attach_default_logger(level: :info)
 
 # Or attach your own handler
 :telemetry.attach_many("my-handler", Puck.Telemetry.event_names(), &handler/4, nil)
 ```
 
-### Events
+| Event | Description |
+|-------|-------------|
+| `[:puck, :call, :start]` | Before LLM call |
+| `[:puck, :call, :stop]` | After successful call |
+| `[:puck, :call, :exception]` | On call failure |
+| `[:puck, :stream, :start]` | Before streaming |
+| `[:puck, :stream, :chunk]` | Each streamed chunk |
+| `[:puck, :stream, :stop]` | After streaming completes |
+| `[:puck, :compaction, :start]` | Before compaction |
+| `[:puck, :compaction, :stop]` | After compaction |
 
-| Event | Measurements | Description |
-|-------|--------------|-------------|
-| `[:puck, :call, :start]` | `system_time` | Before LLM call |
-| `[:puck, :call, :stop]` | `duration` | After successful call |
-| `[:puck, :call, :exception]` | `duration` | On call failure (includes `kind`, `reason`, `stacktrace` in metadata) |
-| `[:puck, :stream, :start]` | `system_time` | Before streaming begins |
-| `[:puck, :stream, :chunk]` | — | For each streamed chunk |
-| `[:puck, :stream, :stop]` | `duration` | After streaming completes |
-| `[:puck, :stream, :exception]` | `duration` | On stream initialization failure |
-| `[:puck, :backend, :request]` | `system_time` | Before backend request |
-| `[:puck, :backend, :response]` | `system_time` | After backend response |
-| `[:puck, :compaction, :start]` | `system_time` | Before context compaction |
-| `[:puck, :compaction, :stop]` | `duration`, `messages_before`, `messages_after` | After successful compaction |
-| `[:puck, :compaction, :error]` | `duration` | On compaction failure |
+## More Examples
 
-All events include relevant metadata (client, context, response, etc.). Durations are in native time units.
-See `Puck.Telemetry` module docs for full details.
+### Streaming
+
+```elixir
+client = Puck.Client.new({Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"})
+{:ok, stream, _ctx} = Puck.stream(client, "Tell me a story")
+
+Enum.each(stream, fn chunk ->
+  IO.write(chunk.content)
+end)
+```
+
+### Multi-modal
+
+```elixir
+alias Puck.Content
+
+{:ok, response, _ctx} = Puck.call(client, [
+  Content.text("What's in this image?"),
+  Content.image_url("https://example.com/photo.png")
+])
+
+# Or with binary data
+image_bytes = File.read!("photo.png")
+{:ok, response, _ctx} = Puck.call(client, [
+  Content.text("Describe this image"),
+  Content.image(image_bytes, "image/png")
+])
+```
+
+### Few-shot Prompting
+
+```elixir
+{:ok, response, _ctx} = Puck.call(client, [
+  %{role: :user, content: "Translate: Hello"},
+  %{role: :assistant, content: "Hola"},
+  %{role: :user, content: "Translate: Goodbye"}
+])
+```
 
 ## Acknowledgments
 
