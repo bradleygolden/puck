@@ -12,9 +12,39 @@ defmodule Puck.Sandbox.Eval.LuaTest do
       assert {:ok, "hello"} = Lua.eval("return 'hello'")
     end
 
-    test "table return" do
+    test "table return is JSON-encodable map" do
       {:ok, result} = Lua.eval("return {a = 1, b = 2}")
+      assert is_map(result)
+      assert result == %{"a" => 1, "b" => 2}
+      assert {:ok, _} = Jason.encode(result)
+    end
+
+    test "nested table return is JSON-encodable" do
+      {:ok, result} = Lua.eval("return {user = {name = 'Alice', age = 30}, count = 5}")
+      assert is_map(result)
+      assert result == %{"user" => %{"name" => "Alice", "age" => 30}, "count" => 5}
+      assert {:ok, _} = Jason.encode(result)
+    end
+
+    test "array table return is JSON-encodable list" do
+      {:ok, result} = Lua.eval("return {10, 20, 30}")
       assert is_list(result)
+      assert result == [10, 20, 30]
+      assert {:ok, _} = Jason.encode(result)
+    end
+
+    test "array of tables return is JSON-encodable" do
+      {:ok, result} = Lua.eval("return {{name = 'a'}, {name = 'b'}}")
+      assert is_list(result)
+      assert result == [%{"name" => "a"}, %{"name" => "b"}]
+      assert {:ok, _} = Jason.encode(result)
+    end
+
+    test "multiple return values are JSON-encodable" do
+      {:ok, result} = Lua.eval("return {x = 1}, {y = 2}")
+      assert is_list(result)
+      assert result == [%{"x" => 1}, %{"y" => 2}]
+      assert {:ok, _} = Jason.encode(result)
     end
 
     test "nil return" do

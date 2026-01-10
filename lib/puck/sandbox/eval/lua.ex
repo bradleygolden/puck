@@ -212,9 +212,40 @@ defmodule Puck.Sandbox.Eval.Lua do
     end
   end
 
-  defp unwrap_result([single]), do: single
+  defp unwrap_result([single]), do: normalize(single)
   defp unwrap_result([]), do: nil
-  defp unwrap_result(multiple), do: multiple
+  defp unwrap_result(multiple), do: Enum.map(multiple, &normalize/1)
+
+  defp normalize(list) when is_list(list) do
+    cond do
+      list == [] ->
+        []
+
+      string_keyed_proplist?(list) ->
+        Map.new(list, fn {k, v} -> {k, normalize(v)} end)
+
+      integer_keyed_proplist?(list) ->
+        list
+        |> Enum.sort_by(fn {k, _} -> k end)
+        |> Enum.map(fn {_, v} -> normalize(v) end)
+
+      true ->
+        Enum.map(list, &normalize/1)
+    end
+  end
+
+  defp normalize(tuple) when is_tuple(tuple), do: Tuple.to_list(tuple) |> Enum.map(&normalize/1)
+  defp normalize(other), do: other
+
+  defp string_keyed_proplist?([{k, _} | _] = list) when is_binary(k),
+    do: Enum.all?(list, &match?({k, _} when is_binary(k), &1))
+
+  defp string_keyed_proplist?(_), do: false
+
+  defp integer_keyed_proplist?([{k, _} | _] = list) when is_integer(k),
+    do: Enum.all?(list, &match?({k, _} when is_integer(k), &1))
+
+  defp integer_keyed_proplist?(_), do: false
 
   defp ensure_lua_available! do
     unless Code.ensure_loaded?(Lua) do
