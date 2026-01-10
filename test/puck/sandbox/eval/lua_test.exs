@@ -35,6 +35,27 @@ defmodule Puck.Sandbox.Eval.LuaTest do
       assert {:ok, 7} = Lua.eval("return add(3, 4)", callbacks: callbacks)
     end
 
+    test "callback returning map with atom keys" do
+      callbacks = %{"get_stats" => fn -> %{total: 100, active: 50} end}
+      assert {:ok, 100} = Lua.eval("return get_stats().total", callbacks: callbacks)
+    end
+
+    test "callback returning nested map with atom keys" do
+      callbacks = %{
+        "get_data" => fn -> %{user: %{name: "Alice", age: 30}, count: 5} end
+      }
+
+      assert {:ok, "Alice"} = Lua.eval("return get_data().user.name", callbacks: callbacks)
+    end
+
+    test "callback returning list of maps with atom keys" do
+      callbacks = %{
+        "get_items" => fn -> [%{id: 1, name: "foo"}, %{id: 2, name: "bar"}] end
+      }
+
+      assert {:ok, "bar"} = Lua.eval("return get_items()[2].name", callbacks: callbacks)
+    end
+
     test "timeout on infinite loop" do
       assert {:error, :timeout} =
                Lua.eval(

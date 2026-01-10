@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-01-10
+
+### Fixed
+
+- Lua callbacks now accept maps with atom keys (idiomatic Elixir) by automatically converting them to string keys at the sandbox boundary
+
 ## [0.2.5] - 2026-01-10
 
 ### Fixed
@@ -103,7 +109,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/bradleygolden/puck/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/bradleygolden/puck/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/bradleygolden/puck/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/bradleygolden/puck/compare/v0.2.2...v0.2.3

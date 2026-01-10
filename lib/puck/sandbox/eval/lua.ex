@@ -190,11 +190,22 @@ defmodule Puck.Sandbox.Eval.Lua do
     end
 
     defp wrap_callback(func) do
-      fn args ->
-        result = apply(func, args)
-        [result]
+      fn args, lua_state ->
+        result = apply(func, args) |> stringify_keys()
+        {encoded, lua_state} = Lua.encode!(lua_state, result)
+        {[encoded], lua_state}
       end
     end
+
+    defp stringify_keys(map) when is_map(map) and not is_struct(map) do
+      Map.new(map, fn
+        {k, v} when is_atom(k) -> {Atom.to_string(k), stringify_keys(v)}
+        {k, v} -> {k, stringify_keys(v)}
+      end)
+    end
+
+    defp stringify_keys(list) when is_list(list), do: Enum.map(list, &stringify_keys/1)
+    defp stringify_keys(other), do: other
   else
     defp run_lua(_code, _callbacks) do
       {:error, "Lua module not available. Add {:lua, \"~> 0.4.0\"} to your dependencies."}
