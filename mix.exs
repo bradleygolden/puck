@@ -78,7 +78,7 @@ defmodule Puck.MixProject do
   end
 
   defp description do
-    "Build LLM agents in Elixir. No magic. Just loops."
+    "AI Agent primitives for Elixir."
   end
 
   defp package do
