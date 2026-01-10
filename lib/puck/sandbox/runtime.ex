@@ -295,6 +295,58 @@ defmodule Puck.Sandbox.Runtime do
     call_optional(adapter, :update, [id, config, merge_opts(sandbox_config, opts)])
   end
 
+  # ============================================================================
+  # Checkpoint Operations (Extension)
+  # ============================================================================
+
+  @doc """
+  Creates a checkpoint of the current sandbox state.
+
+  Checkpoints capture the complete filesystem state for instant rollback.
+  This is useful for evaluation scenarios where you want to test multiple
+  agent runs from the same starting state.
+
+  Returns `{:error, :not_implemented}` if the adapter doesn't support checkpoints.
+
+  ## Options
+
+    * `:comment` - Optional comment describing the checkpoint
+
+  ## Examples
+
+      {:ok, checkpoint_id} = Runtime.create_checkpoint(sandbox)
+      {:ok, checkpoint_id} = Runtime.create_checkpoint(sandbox, comment: "before_test")
+  """
+  def create_checkpoint(%Instance{adapter: adapter} = sandbox, opts \\ []) do
+    call_optional(adapter, :create_checkpoint, [sandbox, opts])
+  end
+
+  @doc """
+  Restores a sandbox to a previous checkpoint state.
+
+  Returns `{:error, :not_implemented}` if the adapter doesn't support checkpoints.
+
+  ## Examples
+
+      :ok = Runtime.restore_checkpoint(sandbox, checkpoint_id)
+  """
+  def restore_checkpoint(%Instance{adapter: adapter} = sandbox, checkpoint_id) do
+    call_optional(adapter, :restore_checkpoint, [sandbox, checkpoint_id])
+  end
+
+  @doc """
+  Lists all checkpoints for a sandbox.
+
+  Returns `{:error, :not_implemented}` if the adapter doesn't support checkpoints.
+
+  ## Examples
+
+      {:ok, checkpoints} = Runtime.list_checkpoints(sandbox)
+  """
+  def list_checkpoints(%Instance{adapter: adapter} = sandbox, opts \\ []) do
+    call_optional(adapter, :list_checkpoints, [sandbox, opts])
+  end
+
   if Code.ensure_loaded?(Req) do
     alias Puck.Sandbox.Runtime.HealthPoller
 

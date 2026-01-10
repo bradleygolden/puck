@@ -53,6 +53,7 @@ defmodule Puck.MixProject do
       {:telemetry, "~> 1.2", optional: true},
       {:zoi, "~> 0.7", optional: true},
       {:lua, "~> 0.4.0", optional: true},
+      {:sprites, git: "https://github.com/superfly/sprites-ex.git", optional: true},
       {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -140,7 +141,8 @@ defmodule Puck.MixProject do
           Puck.Sandbox.Runtime.Template,
           Puck.Sandbox.Runtime.Instance,
           Puck.Sandbox.Runtime.ExecResult,
-          Puck.Sandbox.Runtime.Adapters.Test
+          Puck.Sandbox.Runtime.Adapters.Test,
+          Puck.Sandbox.Runtime.Adapters.Sprites
         ],
         Proxy: [
           Puck.Proxy.Sandbox
