@@ -1,6 +1,6 @@
 # Puck
 
-Agent primitives for Elixir.
+AI Agent primitives for Elixir.
 
 The best AI agents shipped to production share a secret: they're just LLMs calling tools in a loop. Puck gives you the primitives to build exactly that.
 
