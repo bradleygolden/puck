@@ -94,5 +94,46 @@ defmodule Puck.Eval.CollectorTest do
       assert trajectory1.total_steps == 2
       assert trajectory2.total_steps == 1
     end
+
+    test "captures trajectory from streaming response" do
+      client =
+        Puck.Client.new(
+          {Puck.Backends.Mock, stream_chunks: ["This ", "is ", "a ", "streamed ", "response"]}
+        )
+
+      {output, trajectory} =
+        Collector.collect(fn ->
+          {:ok, stream, _ctx} = Puck.stream(client, "Tell me something")
+          Enum.map_join(stream, "", & &1.content)
+        end)
+
+      assert output == "This is a streamed response"
+      assert trajectory.total_steps == 1
+      assert [step] = trajectory.steps
+      assert step.output == "This is a streamed response"
+      assert step.metadata[:streamed] == true
+    end
+
+    test "captures trajectory from mixed call and stream operations" do
+      call_client = Puck.Client.new({Puck.Backends.Mock, response: "call response"})
+      stream_client = Puck.Client.new({Puck.Backends.Mock, stream_chunks: ["streamed"]})
+
+      {output, trajectory} =
+        Collector.collect(fn ->
+          ctx = Puck.Context.new()
+          {:ok, _, ctx} = Puck.call(call_client, "first", ctx)
+          {:ok, stream, _ctx} = Puck.stream(stream_client, "second", ctx)
+          Enum.map_join(stream, "", & &1.content)
+        end)
+
+      assert output == "streamed"
+      assert trajectory.total_steps == 2
+
+      [call_step, stream_step] = trajectory.steps
+      assert call_step.output == "call response"
+      assert call_step.metadata[:streamed] == nil
+      assert stream_step.output == "streamed"
+      assert stream_step.metadata[:streamed] == true
+    end
   end
 end

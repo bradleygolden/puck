@@ -3,7 +3,8 @@ defmodule Puck.Eval.Collector do
   Captures trajectory from agent execution via telemetry.
 
   The Collector attaches telemetry handlers during execution to automatically
-  capture all `Puck.call/4` invocations and build a `Puck.Eval.Trajectory`.
+  capture all `Puck.call/4` and `Puck.stream/4` invocations and build a
+  `Puck.Eval.Trajectory`.
 
   ## Usage
 
@@ -16,7 +17,7 @@ defmodule Puck.Eval.Collector do
 
   ## How It Works
 
-  1. Attaches handlers to `[:puck, :call, :start]` and `[:puck, :call, :stop]`
+  1. Attaches handlers to call and stream telemetry events
   2. Runs the provided function
   3. Collects telemetry events sent to this process
   4. Matches start/stop events to build Steps
@@ -34,12 +35,19 @@ defmodule Puck.Eval.Collector do
 
   @call_start [:puck, :call, :start]
   @call_stop [:puck, :call, :stop]
+  @stream_start [:puck, :stream, :start]
+  @stream_chunk [:puck, :stream, :chunk]
+  @stream_stop [:puck, :stream, :stop]
 
   @doc """
   Collects trajectory from the provided function.
 
-  Wraps the function, capturing all `Puck.call/4` invocations made during
-  its execution. Returns a tuple of `{result, trajectory}`.
+  Wraps the function, capturing all `Puck.call/4` and `Puck.stream/4` invocations
+  made during its execution. Returns a tuple of `{result, trajectory}`.
+
+  Streaming calls are captured with `step.metadata[:streamed] == true` and the
+  concatenated stream content as `step.output`. Note that streaming steps have
+  zero token counts since usage isn't available during streaming.
 
   ## Example
 
@@ -82,7 +90,7 @@ defmodule Puck.Eval.Collector do
   defp attach_handlers(handler_id, ref, pid) do
     :telemetry.attach_many(
       handler_id,
-      [@call_start, @call_stop],
+      [@call_start, @call_stop, @stream_start, @stream_chunk, @stream_stop],
       &handle_event/4,
       %{ref: ref, pid: pid}
     )
@@ -121,6 +129,45 @@ defmodule Puck.Eval.Collector do
     end
   end
 
+  def handle_event(@stream_start, measurements, metadata, %{ref: ref, pid: pid}) do
+    if self() == pid do
+      event = %{
+        type: :stream_start,
+        system_time: measurements[:system_time],
+        prompt: metadata[:prompt],
+        client: metadata[:client],
+        context: metadata[:context]
+      }
+
+      send(pid, {:puck_eval_event, ref, event})
+    end
+  end
+
+  def handle_event(@stream_chunk, _measurements, metadata, %{ref: ref, pid: pid}) do
+    if self() == pid do
+      event = %{
+        type: :stream_chunk,
+        chunk: metadata[:chunk],
+        client: metadata[:client]
+      }
+
+      send(pid, {:puck_eval_event, ref, event})
+    end
+  end
+
+  def handle_event(@stream_stop, measurements, metadata, %{ref: ref, pid: pid}) do
+    if self() == pid do
+      event = %{
+        type: :stream_stop,
+        duration: measurements[:duration],
+        client: metadata[:client],
+        context: metadata[:context]
+      }
+
+      send(pid, {:puck_eval_event, ref, event})
+    end
+  end
+
   def handle_event(_event, _measurements, _metadata, _config), do: :ok
 
   defp receive_and_build_steps(ref) do
@@ -144,52 +191,52 @@ defmodule Puck.Eval.Collector do
   end
 
   defp pair_events(events) do
-    do_pair_events(events, [], nil)
+    do_pair_events(events, [], nil, [])
   end
 
-  defp do_pair_events([], pairs, nil), do: Enum.reverse(pairs)
+  defp do_pair_events([], pairs, nil, _chunks), do: Enum.reverse(pairs)
 
-  defp do_pair_events([], pairs, pending_start) do
-    step = %{start: pending_start, stop: nil}
+  defp do_pair_events([], pairs, pending_start, chunks) do
+    step = %{start: pending_start, stop: nil, chunks: Enum.reverse(chunks)}
     Enum.reverse([step | pairs])
   end
 
-  defp do_pair_events([%{type: :start} = event | rest], pairs, nil) do
-    do_pair_events(rest, pairs, event)
+  defp do_pair_events([%{type: :start} = event | rest], pairs, nil, _chunks) do
+    do_pair_events(rest, pairs, event, [])
   end
 
-  defp do_pair_events([%{type: :start} = event | rest], pairs, pending_start) do
-    step = %{start: pending_start, stop: nil}
-    do_pair_events(rest, [step | pairs], event)
+  defp do_pair_events([%{type: :start} = event | rest], pairs, pending_start, chunks) do
+    step = %{start: pending_start, stop: nil, chunks: Enum.reverse(chunks)}
+    do_pair_events(rest, [step | pairs], event, [])
   end
 
-  defp do_pair_events([%{type: :stop} = event | rest], pairs, pending_start) do
-    step = %{start: pending_start, stop: event}
-    do_pair_events(rest, [step | pairs], nil)
+  defp do_pair_events([%{type: :stop} = event | rest], pairs, pending_start, chunks) do
+    step = %{start: pending_start, stop: event, chunks: Enum.reverse(chunks)}
+    do_pair_events(rest, [step | pairs], nil, [])
   end
 
-  defp event_pair_to_step(%{start: start, stop: stop}) do
+  defp do_pair_events([%{type: :stream_start} = event | rest], pairs, nil, _chunks) do
+    do_pair_events(rest, pairs, event, [])
+  end
+
+  defp do_pair_events([%{type: :stream_start} = event | rest], pairs, pending_start, chunks) do
+    step = %{start: pending_start, stop: nil, chunks: Enum.reverse(chunks)}
+    do_pair_events(rest, [step | pairs], event, [])
+  end
+
+  defp do_pair_events([%{type: :stream_chunk} = event | rest], pairs, pending_start, chunks) do
+    do_pair_events(rest, pairs, pending_start, [event | chunks])
+  end
+
+  defp do_pair_events([%{type: :stream_stop} = event | rest], pairs, pending_start, chunks) do
+    step = %{start: pending_start, stop: event, chunks: Enum.reverse(chunks)}
+    do_pair_events(rest, [step | pairs], nil, [])
+  end
+
+  defp event_pair_to_step(%{start: start, stop: stop, chunks: chunks}) do
     input = if start, do: start.prompt, else: nil
-
-    {output, tokens, metadata} =
-      if stop do
-        response = stop.response
-
-        {
-          extract_output(response),
-          extract_tokens(response),
-          extract_metadata(response)
-        }
-      else
-        {nil, %{input: 0, output: 0, total: 0}, %{}}
-      end
-
-    duration_ms =
-      if stop && stop.duration do
-        System.convert_time_unit(stop.duration, :native, :millisecond)
-      else
-        0
-      end
+    {output, tokens, metadata} = extract_step_data(start, stop, chunks)
+    duration_ms = extract_duration(stop)
 
     Step.new(
       input: input,
@@ -200,8 +247,37 @@ defmodule Puck.Eval.Collector do
     )
   end
 
+  defp event_pair_to_step(%{start: start, stop: stop}) do
+    event_pair_to_step(%{start: start, stop: stop, chunks: []})
+  end
+
+  defp extract_step_data(start, _stop, chunks)
+       when start != nil and start.type == :stream_start and chunks != [] do
+    {extract_stream_output(chunks), %{input: 0, output: 0, total: 0}, %{streamed: true}}
+  end
+
+  defp extract_step_data(_start, stop, _chunks) when stop != nil and stop.response != nil do
+    response = stop.response
+    {extract_output(response), extract_tokens(response), extract_metadata(response)}
+  end
+
+  defp extract_step_data(_start, _stop, _chunks) do
+    {nil, %{input: 0, output: 0, total: 0}, %{}}
+  end
+
+  defp extract_duration(nil), do: 0
+  defp extract_duration(%{duration: nil}), do: 0
+
+  defp extract_duration(%{duration: duration}) do
+    System.convert_time_unit(duration, :native, :millisecond)
+  end
+
   defp extract_output(nil), do: nil
   defp extract_output(response), do: response.content
+
+  defp extract_stream_output(chunks) do
+    Enum.map_join(chunks, "", fn %{chunk: chunk} -> chunk[:content] || "" end)
+  end
 
   defp extract_tokens(nil), do: %{input: 0, output: 0, total: 0}
 

@@ -259,7 +259,7 @@ Primitives for evaluating agents. Capture what happened. Grade the results.
 
 ### Capture Trajectory
 
-Every `Puck.call` becomes a step:
+Every `Puck.call` and `Puck.stream` becomes a step:
 
 ```elixir
 alias Puck.Eval.{Collector, Graders}
@@ -272,6 +272,8 @@ trajectory.total_steps       # => 2
 trajectory.total_tokens      # => 385
 trajectory.total_duration_ms # => 1250
 ```
+
+Streaming responses are also captured, with `step.metadata[:streamed] == true`.
 
 ### Apply Graders
 
