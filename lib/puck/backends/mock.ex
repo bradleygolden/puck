@@ -22,12 +22,16 @@ defmodule Puck.Backends.Mock do
   alias Puck.Response
 
   @impl true
-  def call(config, _messages, _opts) do
+  def call(config, _messages, opts) do
     maybe_delay(config)
 
     case Map.get(config, :error) do
-      nil -> {:ok, build_response(config)}
-      error -> {:error, error}
+      nil ->
+        output_schema = Keyword.get(opts, :output_schema)
+        {:ok, build_response(config, output_schema)}
+
+      error ->
+        {:error, error}
     end
   end
 
@@ -87,15 +91,16 @@ defmodule Puck.Backends.Mock do
 
   # Private helpers
 
-  defp build_response(config) do
-    content = get_response_content(config)
+  defp build_response(config, output_schema) do
+    raw_content = get_response_content(config)
+    content = maybe_parse_content(raw_content, output_schema)
 
     Response.new(
       content: content,
       finish_reason: Map.get(config, :finish_reason, :stop),
       usage: %{
         input_tokens: 10,
-        output_tokens: estimate_tokens(content)
+        output_tokens: estimate_tokens(raw_content)
       },
       metadata: %{
         backend: :mock,
@@ -103,6 +108,14 @@ defmodule Puck.Backends.Mock do
       }
     )
   end
+
+  defp maybe_parse_content(content, nil), do: content
+
+  defp maybe_parse_content(content, schema) when is_map(content) do
+    parse_with_schema(content, schema)
+  end
+
+  defp maybe_parse_content(content, _schema), do: content
 
   defp estimate_tokens(nil), do: 0
   defp estimate_tokens(content) when is_binary(content), do: String.length(content)

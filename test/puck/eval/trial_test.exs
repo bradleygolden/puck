@@ -90,9 +90,9 @@ defmodule Puck.Eval.TrialTest do
       results =
         Trial.run_trials(
           fn ->
-            Process.put(:trial_state, :rand.uniform(1000))
-            state = Process.get(:trial_state)
-            {state, Puck.Eval.empty_trajectory()}
+            state = System.unique_integer()
+            Process.put(:trial_state, state)
+            {Process.get(:trial_state), Puck.Eval.empty_trajectory()}
           end,
           [Graders.satisfies(fn _ -> true end)],
           k: 3
@@ -113,6 +113,31 @@ defmodule Puck.Eval.TrialTest do
       assert results.pass_at_k == false
       assert results.pass_carrot_k == false
       assert results.pass_rate == 0.0
+    end
+
+    test "respects timeout option" do
+      assert_raise RuntimeError, ~r/Trial failed:.*timeout/, fn ->
+        Trial.run_trials(
+          fn ->
+            Process.sleep(100)
+            {"output", Puck.Eval.empty_trajectory()}
+          end,
+          [Graders.contains("output")],
+          k: 1,
+          timeout: 10
+        )
+      end
+    end
+
+    test "returns Summary struct" do
+      results =
+        Trial.run_trials(
+          fn -> {"output", Puck.Eval.empty_trajectory()} end,
+          [Graders.contains("output")],
+          k: 1
+        )
+
+      assert %Trial.Summary{} = results
     end
   end
 end

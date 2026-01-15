@@ -16,7 +16,7 @@ defmodule Puck.Eval.Trial do
         [Graders.contains("john@example.com")],
         k: 5
       )
-      # => %{
+      # => %Puck.Eval.Trial.Summary{
       #   k: 5,
       #   results: [...],
       #   pass_at_k: true,
@@ -37,6 +37,15 @@ defmodule Puck.Eval.Trial do
 
   alias Puck.Eval.{Collector, Result}
 
+  defmodule Summary do
+    @moduledoc """
+    Summary of multi-trial evaluation results.
+    """
+
+    @enforce_keys [:k, :results, :pass_at_k, :pass_carrot_k, :pass_rate]
+    defstruct [:k, :results, :pass_at_k, :pass_carrot_k, :pass_rate]
+  end
+
   @doc """
   Runs agent function k times and grades each execution.
 
@@ -44,10 +53,11 @@ defmodule Puck.Eval.Trial do
 
     * `:k` - Number of trials (default: 3)
     * `:concurrency` - Max concurrent trials (default: `System.schedulers_online()`)
+    * `:timeout` - Timeout per trial in milliseconds (default: 30000)
 
   ## Returns
 
-  Map with:
+  A `Puck.Eval.Trial.Summary` struct with:
     * `:k` - Number of trials run
     * `:results` - List of `Puck.Eval.Result` structs
     * `:pass_at_k` - Boolean, true if ≥1 trial passed
@@ -68,6 +78,7 @@ defmodule Puck.Eval.Trial do
       when is_function(agent_fn, 0) and is_list(graders) do
     k = Keyword.get(opts, :k, 3)
     concurrency = Keyword.get(opts, :concurrency, System.schedulers_online())
+    timeout = Keyword.get(opts, :timeout, :timer.seconds(30))
 
     results =
       1..k
@@ -77,11 +88,15 @@ defmodule Puck.Eval.Trial do
           Result.from_graders(output, trajectory, graders)
         end,
         max_concurrency: concurrency,
-        timeout: :infinity
+        timeout: timeout,
+        on_timeout: :kill_task
       )
-      |> Enum.map(fn {:ok, result} -> result end)
+      |> Enum.map(fn
+        {:ok, result} -> result
+        {:exit, reason} -> raise "Trial failed: #{inspect(reason)}"
+      end)
 
-    %{
+    %Summary{
       k: k,
       results: results,
       pass_at_k: Enum.any?(results, & &1.passed?),

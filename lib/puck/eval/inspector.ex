@@ -126,18 +126,7 @@ defmodule Puck.Eval.Inspector do
     |> String.trim_trailing()
   end
 
-  defp format_output(step) do
-    cond do
-      is_struct(step.output) ->
-        inspect(step.output)
-
-      is_binary(step.output) ->
-        inspect(step.output)
-
-      true ->
-        inspect(step.output)
-    end
-  end
+  defp format_output(step), do: inspect(step.output)
 
   defp truncate(str, max_length) when byte_size(str) <= max_length, do: str
 
