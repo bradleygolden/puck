@@ -17,7 +17,7 @@ defmodule Puck.Eval.Inspector do
 
       result = Result.from_graders(output, trajectory, graders)
 
-      unless result.passed? do
+      if not result.passed? do
         IO.puts(Inspector.format_failures(result))
       end
 
@@ -75,7 +75,7 @@ defmodule Puck.Eval.Inspector do
 
       result = Result.from_graders(output, trajectory, graders)
 
-      unless result.passed? do
+      if not result.passed? do
         IO.puts(Inspector.format_failures(result))
       end
 

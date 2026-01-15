@@ -79,7 +79,7 @@ defmodule Puck.Eval do
       Inspector.print_trajectory(trajectory)
 
       # Format grader failures
-      unless result.passed? do
+      if not result.passed? do
         IO.puts(Inspector.format_failures(result))
       end
 
