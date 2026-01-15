@@ -309,6 +309,64 @@ Graders.output_not_produced(DeleteContact)
 Graders.output_sequence([Search, Confirm, Done])
 ```
 
+### Multi-Trial Evaluation
+
+Run agent multiple times to measure reliability (pass@k) and consistency (pass^k):
+
+```elixir
+alias Puck.Eval.Trial
+
+results = Trial.run_trials(
+  fn -> MyAgent.run("Find contact") end,
+  [Graders.contains("john@example.com")],
+  k: 5
+)
+
+results.pass_at_k      # => true (≥1 success)
+results.pass_carrot_k  # => false (not all succeeded)
+results.pass_rate      # => 0.6 (60% success rate)
+```
+
+Use `pass@k` for reliability testing (does it work at all?) and `pass^k` for consistency testing (does it always work?).
+
+### LLM-as-Judge Graders
+
+For subjective criteria like tone, empathy, or quality:
+
+```elixir
+alias Puck.Eval.Graders.LLM
+
+judge_client = Puck.Client.new(
+  {Puck.Backends.ReqLLM, "anthropic:claude-haiku-4-5"}
+)
+
+result = Puck.Eval.grade(output, trajectory, [
+  LLM.rubric(judge_client, """
+  - Response is polite
+  - Response is helpful
+  - Response is concise
+  """)
+])
+```
+
+LLM judges are non-deterministic. Use multi-trial evaluation to measure reliability.
+
+### Debugging Tools
+
+When evals fail, inspect what happened:
+
+```elixir
+alias Puck.Eval.Inspector
+
+# Print human-readable trajectory
+Inspector.print_trajectory(trajectory)
+
+# Format grader failures
+unless result.passed? do
+  IO.puts(Inspector.format_failures(result))
+end
+```
+
 ### Custom Graders
 
 Graders are just functions:
@@ -320,6 +378,176 @@ my_grader = fn output, trajectory ->
   else
     {:fail, "Used #{trajectory.total_tokens} tokens, expected < 1000"}
   end
+end
+```
+
+### Evaluation Best Practices
+
+Based on [Anthropic's eval methodology](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents):
+
+#### 1. Grade Outcomes, Not Paths
+
+```elixir
+# ❌ Brittle - rejects valid solutions
+Graders.output_sequence([SearchDB, LookupContact, FetchEmail, Done])
+
+# ✅ Flexible - accepts any path that works
+Graders.output_produced(Done)
+Graders.contains("john@example.com")
+```
+
+Agents discover valid approaches designers miss. Grade what matters, not how it's done.
+
+#### 2. Test Both Triggers and Constraints
+
+```elixir
+# Positive trigger
+test "deletes test user" do
+  assert_produced(DeleteUser)
+end
+
+# Negative constraint
+test "refuses admin deletion" do
+  assert_not_produced(DeleteUser)
+  assert_contains("cannot delete admin")
+end
+```
+
+Testing only triggers leads to agents that over-apply actions. Balanced problem sets prevent one-sided optimization.
+
+#### 3. Read Transcripts When Failing
+
+```elixir
+# 0% pass rate across trials?
+Inspector.print_trajectory(trajectory)
+
+# Usually reveals:
+# - Ambiguous task specs
+# - Brittle graders
+# - Missing reference solutions
+```
+
+If everything fails, the eval is broken. Fix the eval before blaming the agent.
+
+#### 4. Start Small, Graduate to Regression
+
+```elixir
+# Capability eval - challenging task
+@tag :eval_capability
+test "handles complex scenario" do
+  # Goal: ~70-90% pass rate
+end
+
+# Regression eval - should always pass
+@tag :eval_regression
+test "basic functionality works" do
+  # Goal: ~100% pass rate
+end
+```
+
+Start with 20-50 real-world failures. Once agents reach ~100% on capability evals, graduate them to regression tests. Run capability evals less frequently, regression tests on every commit.
+
+#### 5. Use Multi-Trial for Reliability
+
+```elixir
+test "agent reliably finds contacts" do
+  results = Trial.run_trials(
+    fn -> ContactAgent.find("John") end,
+    [Graders.contains("@")],
+    k: 10
+  )
+
+  # Require 90% reliability
+  assert results.pass_rate >= 0.9
+end
+```
+
+Single runs can be misleading. Multi-trial evaluation reveals true reliability.
+
+#### 6. Isolate State Between Trials
+
+ExUnit's `async: true` and BEAM process isolation provide clean state automatically:
+
+```elixir
+defmodule ContactAgentTest do
+  use ExUnit.Case, async: true
+
+  test "finds contact" do
+    # Each test runs in isolated process
+    # Clean database via Ecto sandbox
+    # Clean filesystem via tmp directories
+  end
+end
+```
+
+No Docker containers needed - BEAM provides isolation.
+
+### In ExUnit
+
+```elixir
+defmodule ContactAgentTest do
+  use ExUnit.Case, async: true
+
+  alias Puck.Eval.{Collector, Graders, Inspector, Trial}
+
+  test "finds existing contact" do
+    {output, trajectory} = Collector.collect(fn ->
+      ContactAgent.run("Find John's email")
+    end)
+
+    result = Puck.Eval.grade(output, trajectory, [
+      Graders.contains("john@example.com"),
+      Graders.output_sequence([Search, Confirm, Done]),
+      Graders.max_steps(5)
+    ])
+
+    assert result.passed?, Inspector.format_failures(result)
+  end
+
+  test "refuses non-existent contact" do
+    {output, trajectory} = Collector.collect(fn ->
+      ContactAgent.run("Find NonExistent")
+    end)
+
+    result = Puck.Eval.grade(output, trajectory, [
+      Graders.output_not_produced(LookupContact),
+      Graders.contains("not found")
+    ])
+
+    assert result.passed?
+  end
+
+  test "reliably finds contacts" do
+    results = Trial.run_trials(
+      fn -> ContactAgent.run("Find John's email") end,
+      [Graders.contains("john@example.com")],
+      k: 10
+    )
+
+    assert results.pass_rate >= 0.9, "Agent not reliable enough"
+  end
+end
+```
+
+### Production Monitoring
+
+```elixir
+def monitor_agent_call(input) do
+  {output, trajectory} = Puck.Eval.collect(fn ->
+    MyAgent.run(input)
+  end)
+
+  :telemetry.execute(
+    [:my_app, :agent, :call],
+    %{
+      steps: trajectory.total_steps,
+      tokens: trajectory.total_tokens,
+      duration_ms: trajectory.total_duration_ms
+    },
+    %{input: input}
+  )
+
+  output
 end
 ```
 

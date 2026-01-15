@@ -31,13 +31,25 @@ defmodule Puck.Integration.ThinkingTest do
       assert response.finish_reason == :stop
     end
 
-    # @tag timeout: 120_000
-    # test "includes thinking_tokens in usage when available", %{
-    #   client: client,
-    #   thinking_opts: thinking_opts
-    # } do
-    # TODO
-    # end
+    @tag timeout: 120_000
+    test "includes thinking_tokens in usage when available", %{
+      client: client,
+      thinking_opts: thinking_opts
+    } do
+      {:ok, response, _ctx} =
+        Puck.call(
+          client,
+          "What is 15 + 27? Think through this step by step.",
+          Puck.Context.new(),
+          backend_opts: thinking_opts
+        )
+
+      assert is_map(response.usage)
+      assert is_integer(response.usage.thinking_tokens)
+      assert response.usage.thinking_tokens > 0
+      assert is_integer(response.usage.input_tokens)
+      assert is_integer(response.usage.output_tokens)
+    end
 
     @tag timeout: 120_000
     test "streams thinking chunks", %{client: client, thinking_opts: thinking_opts} do

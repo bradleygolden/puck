@@ -152,7 +152,10 @@ defmodule Puck.MixProject do
           Puck.Eval.Collector,
           Puck.Eval.Grader,
           Puck.Eval.Graders,
-          Puck.Eval.Result
+          Puck.Eval.Graders.LLM,
+          Puck.Eval.Result,
+          Puck.Eval.Trial,
+          Puck.Eval.Inspector
         ]
       ]
     ]

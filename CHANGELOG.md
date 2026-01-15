@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Puck.Eval.Trial` - Run agents multiple times to measure reliability (pass@k) and consistency (pass^k)
+- `Puck.Eval.Graders.LLM` - Use LLMs to grade subjective criteria like tone and helpfulness
+- `Puck.Eval.Inspector` - Debug tools to print trajectories and format grader failures
+
 ## [0.2.7] - 2026-01-10
 
 ### Fixed
