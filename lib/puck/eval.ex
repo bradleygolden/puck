@@ -15,6 +15,12 @@ defmodule Puck.Eval do
     * `Puck.Eval.Graders` - Built-in graders
     * `Puck.Eval.Result` - Aggregates grader results
 
+  ## Helpers
+
+    * `Puck.Eval.Trial` - Multi-trial execution with pass@k metrics
+    * `Puck.Eval.Graders.LLM` - LLM-as-judge for subjective criteria
+    * `Puck.Eval.Inspector` - Debug tools for trajectories and failures
+
   ## Quick Example
 
       alias Puck.Eval.{Collector, Graders, Result}
@@ -33,6 +39,49 @@ defmodule Puck.Eval do
 
       # Check result
       result.passed?  # => true or false
+
+  ## Multi-Trial Evaluation
+
+      alias Puck.Eval.Trial
+
+      # Run 5 trials, compute reliability metrics
+      results = Trial.run_trials(
+        fn -> MyAgent.run("Find contact") end,
+        [Graders.contains("john@example.com")],
+        k: 5
+      )
+
+      results.pass_at_k      # => true (≥1 success)
+      results.pass_carrot_k  # => false (not all succeeded)
+      results.pass_rate      # => 0.6 (60% success rate)
+
+  ## LLM-as-Judge
+
+      alias Puck.Eval.Graders.LLM
+
+      judge_client = Puck.Client.new(
+        {Puck.Backends.ReqLLM, "anthropic:claude-haiku-4-5"}
+      )
+
+      result = Result.from_graders(output, trajectory, [
+        LLM.rubric(judge_client, \"\"\"
+        - Response is polite
+        - Response is helpful
+        - Response is concise
+        \"\"\")
+      ])
+
+  ## Debugging
+
+      alias Puck.Eval.Inspector
+
+      # Print human-readable trajectory
+      Inspector.print_trajectory(trajectory)
+
+      # Format grader failures
+      unless result.passed? do
+        IO.puts(Inspector.format_failures(result))
+      end
 
   ## In ExUnit
 
