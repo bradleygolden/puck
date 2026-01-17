@@ -53,7 +53,8 @@ defmodule Puck.Eval.TrialTest do
             {output, Puck.Eval.empty_trajectory()}
           end,
           [Graders.contains("success")],
-          k: 4
+          k: 4,
+          concurrency: 1
         )
 
       assert results.pass_rate == 0.5

@@ -112,8 +112,9 @@ def deps do
     {:puck, "~> 0.2.0"},
 
     # LLM backends (pick one or more)
-    {:req_llm, "~> 1.0"},       # Multi-provider LLM support
-    {:baml_elixir, "~> 1.0"},   # Structured outputs with BAML
+    {:req_llm, "~> 1.0"},         # Multi-provider LLM support
+    {:baml_elixir, "~> 1.0"},     # Structured outputs with BAML
+    {:claude_agent_sdk, "~> 0.8"}, # Claude Code with subscription auth
 
     # Optional features
     {:solid, "~> 0.15"},        # Liquid template syntax
@@ -170,6 +171,49 @@ client = Puck.Client.new(
 ```
 
 See [BAML Client Registry docs](https://docs.boundaryml.com/guide/baml-advanced/llm-client-registry) for supported providers.
+
+### Claude Agent SDK
+
+Use Claude Code with your existing subscription (Pro/Max). Requires the Claude Code CLI:
+
+```bash
+# Install CLI
+npm install -g @anthropic-ai/claude-code
+
+# Login with your subscription
+claude login
+```
+
+Then add the dependency and use the backend:
+
+```elixir
+# In mix.exs
+{:claude_agent_sdk, "~> 0.8"}
+
+# In your code
+client = Puck.Client.new(
+  {Puck.Backends.ClaudeAgentSDK, %{
+    allowed_tools: ["Read", "Glob", "Grep"],
+    permission_mode: :bypass_permissions
+  }}
+)
+
+{:ok, response, _ctx} = Puck.call(client, "What files are in this directory?")
+```
+
+This backend is agentic—Claude Code may make multiple tool calls before returning. Configuration options:
+
+| Option | Description |
+|--------|-------------|
+| `:allowed_tools` | List of tools Claude can use (e.g., `["Read", "Edit", "Bash"]`) |
+| `:disallowed_tools` | Tools to disable |
+| `:permission_mode` | `:default`, `:accept_edits`, `:bypass_permissions` |
+| `:max_turns` | Maximum conversation turns |
+| `:cwd` | Working directory for file operations |
+| `:model` | Model to use (`"sonnet"`, `"opus"`) |
+| `:sandbox` | Sandbox settings map (`%{enabled: true, root: "/path", network_disabled: true}`) |
+
+See the [claude_agent_sdk documentation](https://hexdocs.pm/claude_agent_sdk) for more details.
 
 ### Mock
 
