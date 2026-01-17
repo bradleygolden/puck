@@ -211,8 +211,9 @@ This backend is agentic—Claude Code may make multiple tool calls before return
 | `:max_turns` | Maximum conversation turns |
 | `:cwd` | Working directory for file operations |
 | `:model` | Model to use (`"sonnet"`, `"opus"`) |
+| `:sandbox` | Sandbox settings map (`%{enabled: true, root: "/path", network_disabled: true}`) |
 
-See [claude_agent_sdk](https://hexdocs.pm/claude_agent_sdk) for more details.
+See the [claude_agent_sdk documentation](https://hexdocs.pm/claude_agent_sdk) for more details.
 
 ### Mock
 
