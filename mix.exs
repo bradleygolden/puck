@@ -46,6 +46,7 @@ defmodule Puck.MixProject do
     [
       {:jason, "~> 1.4"},
       {:baml_elixir, "~> 1.0.0-pre.24", optional: true},
+      {:claude_agent_sdk, "~> 0.8", optional: true},
       {:plug, "~> 1.15", optional: true},
       {:req, "~> 0.5", optional: true},
       {:req_llm, "~> 1.0", optional: true},
@@ -111,6 +112,7 @@ defmodule Puck.MixProject do
           Puck.Backend,
           Puck.Baml,
           Puck.Backends.Baml,
+          Puck.Backends.ClaudeAgentSDK,
           Puck.Backends.Mock,
           Puck.Backends.ReqLLM
         ],
