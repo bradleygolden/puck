@@ -2,19 +2,43 @@ defmodule Puck.Backends.Mock do
   @moduledoc """
   Mock backend for testing.
 
-  ## Options
+  Supports two modes: static (single response) and queue-based (multiple sequential responses).
 
-  - `:response` - Response text (default: "Mock response")
+  ## Static Mode Options
+
+  - `:response` - Response content (default: "Mock response")
   - `:stream_chunks` - List of chunks for streaming
   - `:error` - Return this error instead of response
   - `:finish_reason` - Finish reason (default: `:stop`)
   - `:delay` - Delay in milliseconds
+  - `:model` - Model name for introspection (default: "mock")
 
-  ## Example
+  ## Queue Mode Options
 
+  - `:queue_pid` - PID of an Agent holding a list of responses (enables queue mode)
+  - `:default` - Response when queue is exhausted (default: `{:error, :mock_responses_exhausted}`)
+  - `:finish_reason` - Finish reason (default: `:stop`)
+  - `:delay` - Delay in milliseconds
+  - `:model` - Model name for introspection (default: "mock")
+
+  ## Response Types (Queue Mode)
+
+  In queue mode, each response can be:
+  - Any term (returned as response content)
+  - `{:error, reason}` (simulates LLM error)
+  - `fn messages -> response end` (dynamic, receives conversation history)
+
+  ## Examples
+
+      # Static mode
       client = Puck.Client.new({Puck.Backends.Mock, response: "Hello!"})
       client = Puck.Client.new({Puck.Backends.Mock, error: :rate_limited})
 
+      # Queue mode (prefer using Puck.Test.mock_client/2)
+      {:ok, queue} = Agent.start_link(fn -> ["First", "Second", "Third"] end)
+      client = Puck.Client.new({Puck.Backends.Mock, queue_pid: queue})
+
+  See `Puck.Test.mock_client/2` for the preferred way to create queue-based mock clients.
   """
 
   @behaviour Puck.Backend
@@ -22,27 +46,29 @@ defmodule Puck.Backends.Mock do
   alias Puck.Response
 
   @impl true
-  def call(config, _messages, opts) do
+  def call(config, messages, opts) do
     maybe_delay(config)
 
-    case Map.get(config, :error) do
-      nil ->
-        output_schema = Keyword.get(opts, :output_schema)
-        {:ok, build_response(config, output_schema)}
+    case get_response(config, messages) do
+      {:error, _} = error ->
+        error
 
-      error ->
-        {:error, error}
+      response ->
+        output_schema = Keyword.get(opts, :output_schema)
+        {:ok, build_response(response, config, output_schema)}
     end
   end
 
   @impl true
-  def stream(config, _messages, opts) do
+  def stream(config, messages, opts) do
     maybe_delay(config)
 
-    case Map.get(config, :error) do
-      nil ->
+    case get_stream_chunks(config, messages) do
+      {:error, _} = error ->
+        error
+
+      chunks ->
         output_schema = Keyword.get(opts, :output_schema)
-        chunks = get_stream_chunks(config)
 
         stream =
           Stream.map(chunks, fn chunk ->
@@ -51,9 +77,6 @@ defmodule Puck.Backends.Mock do
           end)
 
         {:ok, stream}
-
-      error ->
-        {:error, error}
     end
   end
 
@@ -91,8 +114,37 @@ defmodule Puck.Backends.Mock do
 
   # Private helpers
 
-  defp build_response(config, output_schema) do
-    raw_content = get_response_content(config)
+  # Queue mode (when queue_pid is present)
+  defp get_response(%{queue_pid: queue_pid} = config, messages) do
+    response = pop_response(queue_pid, config)
+    resolve_response(response, messages)
+  end
+
+  # Static mode (legacy behavior)
+  defp get_response(config, _messages) do
+    case Map.get(config, :error) do
+      nil -> Map.get(config, :response, "Mock response")
+      error -> {:error, error}
+    end
+  end
+
+  defp pop_response(queue_pid, config) do
+    default = Map.get(config, :default, {:error, :mock_responses_exhausted})
+
+    Agent.get_and_update(queue_pid, fn
+      [next | rest] -> {next, rest}
+      [] -> {default, []}
+    end)
+  end
+
+  # Function receives messages, returns response (Req.stub-style)
+  defp resolve_response(fun, messages) when is_function(fun, 1) do
+    fun.(messages)
+  end
+
+  defp resolve_response(response, _messages), do: response
+
+  defp build_response(raw_content, config, output_schema) do
     content = maybe_parse_content(raw_content, output_schema)
 
     Response.new(
@@ -121,19 +173,27 @@ defmodule Puck.Backends.Mock do
   defp estimate_tokens(content) when is_binary(content), do: String.length(content)
   defp estimate_tokens(content), do: content |> inspect() |> String.length()
 
-  defp get_response_content(config) do
-    Map.get(config, :response, "Mock response")
+  defp get_stream_chunks(%{queue_pid: _} = config, messages) do
+    case get_response(config, messages) do
+      {:error, _} = error -> error
+      response -> [response]
+    end
   end
 
-  defp get_stream_chunks(config) do
-    case Map.get(config, :stream_chunks) do
+  defp get_stream_chunks(config, _messages) do
+    case Map.get(config, :error) do
       nil ->
-        # Default: split response into words
-        content = get_response_content(config)
-        String.split(content, " ", trim: true)
+        case Map.get(config, :stream_chunks) do
+          nil ->
+            content = Map.get(config, :response, "Mock response")
+            String.split(content, " ", trim: true)
 
-      chunks when is_list(chunks) ->
-        chunks
+          chunks when is_list(chunks) ->
+            chunks
+        end
+
+      error ->
+        {:error, error}
     end
   end
 

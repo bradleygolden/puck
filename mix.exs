@@ -54,6 +54,7 @@ defmodule Puck.MixProject do
       {:telemetry, "~> 1.2", optional: true},
       {:zoi, "~> 0.7", optional: true},
       {:lua, "~> 0.4.0", optional: true},
+      {:nimble_ownership, "~> 1.0", optional: true},
       {:ex_doc, "~> 0.34", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -158,6 +159,9 @@ defmodule Puck.MixProject do
           Puck.Eval.Result,
           Puck.Eval.Trial,
           Puck.Eval.Inspector
+        ],
+        Testing: [
+          Puck.Test
         ]
       ]
     ]
