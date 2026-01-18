@@ -224,6 +224,35 @@ client = Puck.Client.new({Puck.Backends.Mock, response: "Test response"})
 {:ok, response, _ctx} = Puck.call(client, "Hello!")
 ```
 
+### Testing
+
+For deterministic multi-step agent tests:
+
+```elixir
+# test/test_helper.exs
+Puck.Test.start_link()
+ExUnit.start()
+
+# test/my_agent_test.exs
+defmodule MyAgentTest do
+  use ExUnit.Case, async: true
+
+  setup :verify_on_exit!
+
+  test "agent completes workflow" do
+    client = Puck.Test.mock_client([
+      %{action: "search"},
+      %{action: "done"}
+    ])
+
+    {:ok, result} = MyAgent.run(client: client)
+    assert result.action == "done"
+  end
+
+  defp verify_on_exit!(_), do: Puck.Test.verify_on_exit!()
+end
+```
+
 ## Context
 
 Multi-turn conversations with automatic state management:

@@ -112,15 +112,11 @@ defmodule Puck.Backends.Mock do
     }
   end
 
-  # Private helpers
-
-  # Queue mode (when queue_pid is present)
   defp get_response(%{queue_pid: queue_pid} = config, messages) do
     response = pop_response(queue_pid, config)
     resolve_response(response, messages)
   end
 
-  # Static mode (legacy behavior)
   defp get_response(config, _messages) do
     case Map.get(config, :error) do
       nil -> Map.get(config, :response, "Mock response")
@@ -137,7 +133,6 @@ defmodule Puck.Backends.Mock do
     end)
   end
 
-  # Function receives messages, returns response (Req.stub-style)
   defp resolve_response(fun, messages) when is_function(fun, 1) do
     fun.(messages)
   end
