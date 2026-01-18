@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-01-17
+
 ### Added
 
-- `Puck.Eval.Trial` - Run agents multiple times to measure reliability (pass@k) and consistency (pass^k)
-- `Puck.Eval.Graders.LLM` - Use LLMs to grade subjective criteria like tone and helpfulness
-- `Puck.Eval.Inspector` - Debug tools to print trajectories and format grader failures
+- `Puck.Backends.ClaudeAgentSDK` - Use Claude Code CLI with your existing Pro/Max subscription
+- Native JSON schema structured outputs via SDK
+- Automatic wrapping for union schemas (anyOf/oneOf/allOf) to work around Anthropic API limitation
+- Sandbox mode support for safe execution
 
 ## [0.2.7] - 2026-01-10
 
@@ -121,7 +124,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/bradleygolden/puck/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/bradleygolden/puck/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/bradleygolden/puck/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/bradleygolden/puck/compare/v0.2.4...v0.2.5
