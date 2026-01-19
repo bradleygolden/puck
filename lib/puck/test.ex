@@ -134,17 +134,22 @@ defmodule Puck.Test do
   end
 
   defp do_verify(pid) do
+    ensure_started()
     key = {:puck_test_mocks, pid}
 
-    case NimbleOwnership.fetch_owner(@ownership, [pid], key) do
-      {:ok, ^pid} ->
-        {:ok, mocks} =
-          NimbleOwnership.get_and_update(@ownership, pid, key, fn m -> {m, nil} end)
+    try do
+      case NimbleOwnership.fetch_owner(@ownership, [pid], key) do
+        {:ok, ^pid} ->
+          {:ok, mocks} =
+            NimbleOwnership.get_and_update(@ownership, pid, key, fn m -> {m, nil} end)
 
-        verify_and_stop_mocks(mocks || [])
+          verify_and_stop_mocks(mocks || [])
 
-      _ ->
-        :ok
+        _ ->
+          :ok
+      end
+    catch
+      :exit, _ -> :ok
     end
   end
 
