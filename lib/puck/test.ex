@@ -5,13 +5,6 @@ defmodule Puck.Test do
   Creates mock clients with queued responses that work across process
   boundaries, with optional verification that all responses were consumed.
 
-  ## Setup
-
-  Add to `test/test_helper.exs`:
-
-      Puck.Test.start_link()
-      ExUnit.start()
-
   ## Usage
 
       defmodule MyAgentTest do
@@ -34,13 +27,16 @@ defmodule Puck.Test do
 
   @ownership Puck.Test.Ownership
 
-  @doc """
-  Starts the ownership server for verification tracking.
-
-  Call this in `test/test_helper.exs` before `ExUnit.start()`.
-  """
+  @doc false
   def start_link(opts \\ []) do
     NimbleOwnership.start_link(Keyword.put_new(opts, :name, @ownership))
+  end
+
+  defp ensure_started do
+    case start_link() do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+    end
   end
 
   @doc """
@@ -117,6 +113,7 @@ defmodule Puck.Test do
   end
 
   defp track_mock(queue_pid, count) do
+    ensure_started()
     pid = self()
     key = {:puck_test_mocks, pid}
 

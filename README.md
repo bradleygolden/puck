@@ -229,11 +229,6 @@ client = Puck.Client.new({Puck.Backends.Mock, response: "Test response"})
 For deterministic multi-step agent tests:
 
 ```elixir
-# test/test_helper.exs
-Puck.Test.start_link()
-ExUnit.start()
-
-# test/my_agent_test.exs
 defmodule MyAgentTest do
   use ExUnit.Case, async: true
 
