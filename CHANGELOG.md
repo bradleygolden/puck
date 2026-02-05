@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-02-05
+
+### Fixed
+
+- Claude Agent SDK backend now resumes sessions on multi-turn calls
+- Stream event partial chunks are now emitted during streaming (handles both CLIStream and ClientStream SDK paths)
+
+### Changed
+
+- Updated ex_doc from 0.39 to 0.40
+
 ## [0.2.9] - 2026-01-18
 
 ### Added
@@ -130,7 +141,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.9...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.10...HEAD
+[0.2.10]: https://github.com/bradleygolden/puck/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/bradleygolden/puck/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/bradleygolden/puck/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/bradleygolden/puck/compare/v0.2.6...v0.2.7
