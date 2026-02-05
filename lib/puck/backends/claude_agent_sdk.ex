@@ -70,10 +70,11 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
     def call(config, messages, opts) do
       output_schema = Keyword.get(opts, :output_schema)
       prompt = extract_user_prompt(messages)
+      session_id = extract_session_id(messages)
       {sdk_opts, schema_wrapped?} = build_sdk_options(config, messages, output_schema)
 
       {content, _session_id, result_data} =
-        ClaudeAgentSDK.query(prompt, sdk_opts)
+        sdk_query(prompt, sdk_opts, session_id)
         |> Enum.reduce({nil, nil, %{}}, &accumulate_message/2)
 
       {:ok, build_response(content, result_data, config, output_schema, schema_wrapped?)}
@@ -83,10 +84,11 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
     def stream(config, messages, opts) do
       output_schema = Keyword.get(opts, :output_schema)
       prompt = extract_user_prompt(messages)
+      session_id = extract_session_id(messages)
       {sdk_opts, _schema_wrapped?} = build_sdk_options(config, messages, output_schema)
 
       stream =
-        ClaudeAgentSDK.query(prompt, sdk_opts)
+        sdk_query(prompt, sdk_opts, session_id)
         |> Stream.flat_map(&to_chunk/1)
 
       {:ok, stream}
@@ -120,6 +122,25 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
         %Message{content: content} -> extract_text(content)
       end
     end
+
+    defp extract_session_id(messages) do
+      messages
+      |> Enum.reverse()
+      |> Enum.find_value(fn
+        %Message{role: :assistant, metadata: %{session_id: id}}
+        when is_binary(id) and id != "" ->
+          id
+
+        _ ->
+          nil
+      end)
+    end
+
+    defp sdk_query(prompt, sdk_opts, nil),
+      do: ClaudeAgentSDK.query(prompt, sdk_opts)
+
+    defp sdk_query(prompt, sdk_opts, session_id),
+      do: ClaudeAgentSDK.resume(session_id, prompt, sdk_opts)
 
     defp extract_text(parts) when is_list(parts) do
       parts
@@ -274,7 +295,11 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
             %{
               type: :content,
               content: result,
-              metadata: %{backend: :claude_agent_sdk, final: true}
+              metadata: %{
+                backend: :claude_agent_sdk,
+                final: true,
+                session_id: get_in_any(data, [:session_id])
+              }
             }
           ]
       end

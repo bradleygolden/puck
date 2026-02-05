@@ -248,4 +248,49 @@ defmodule Puck.Integration.ClaudeAgentSDKTest do
       assert is_binary(response.content.message)
     end
   end
+
+  describe "ClaudeAgentSDK session resume" do
+    @describetag :claude_agent_sdk
+
+    setup do
+      client =
+        Puck.Client.new(
+          {Puck.Backends.ClaudeAgentSDK,
+           %{
+             allowed_tools: [],
+             permission_mode: :bypass_permissions,
+             max_turns: 1,
+             sandbox: sandbox_config()
+           }}
+        )
+
+      [client: client]
+    end
+
+    @tag timeout: 120_000
+    test "resumes session to recall prior context", %{client: client} do
+      token = "PUCK_#{:rand.uniform(999_999)}"
+      ctx = Puck.Context.new()
+
+      {:ok, response1, ctx} =
+        Puck.call(
+          client,
+          "Remember this token exactly: #{token}. Just confirm you've noted it.",
+          ctx
+        )
+
+      assert is_binary(response1.content)
+      assert is_binary(response1.metadata.session_id)
+      assert response1.metadata.session_id != ""
+
+      {:ok, response2, _ctx} =
+        Puck.call(
+          client,
+          "What was the exact token I asked you to remember? Reply with just the token.",
+          ctx
+        )
+
+      assert response2.content =~ token
+    end
+  end
 end
