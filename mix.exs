@@ -38,7 +38,7 @@ defmodule Puck.MixProject do
 
   defp dialyzer do
     [
-      plt_add_apps: [:ex_unit]
+      plt_add_apps: [:ex_unit, :phoenix_live_view, :phoenix_pubsub]
     ]
   end
 
@@ -54,6 +54,8 @@ defmodule Puck.MixProject do
       {:telemetry, "~> 1.2", optional: true},
       {:zoi, "~> 0.7", optional: true},
       {:lua, "~> 0.4.0", optional: true},
+      {:phoenix_live_view, "~> 1.0", optional: true},
+      {:phoenix_pubsub, "~> 2.1", optional: true},
       {:nimble_ownership, "~> 1.0"},
       {:ex_doc, "~> 0.40", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -160,6 +162,9 @@ defmodule Puck.MixProject do
           Puck.Eval.Result,
           Puck.Eval.Trial,
           Puck.Eval.Inspector
+        ],
+        LiveView: [
+          Puck.LiveView
         ],
         Testing: [
           Puck.Test

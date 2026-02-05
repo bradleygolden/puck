@@ -117,10 +117,12 @@ def deps do
     {:claude_agent_sdk, "~> 0.8"}, # Claude Code with subscription auth
 
     # Optional features
-    {:solid, "~> 0.15"},        # Liquid template syntax
-    {:telemetry, "~> 1.2"},     # Observability
-    {:zoi, "~> 0.7"},           # Schema validation for structured outputs
-    {:lua, "~> 0.4.0"}          # Lua sandbox for code execution
+    {:solid, "~> 0.15"},           # Liquid template syntax
+    {:telemetry, "~> 1.2"},        # Observability
+    {:zoi, "~> 0.7"},              # Schema validation for structured outputs
+    {:lua, "~> 0.4.0"},            # Lua sandbox for code execution
+    {:phoenix_pubsub, "~> 2.1"},   # LiveView streaming integration
+    {:phoenix_live_view, "~> 1.0"} # LiveView streaming integration
   ]
 end
 ```
@@ -702,6 +704,76 @@ image_bytes = File.read!("photo.png")
   %{role: :user, content: "Translate: Goodbye"}
 ])
 ```
+
+## LiveView Integration
+
+Stream LLM responses into Phoenix LiveView with durable state. Stream data lives in
+ETS (survives GenServer crashes), and LiveViews reconnect by reading directly from ETS.
+
+Requires `{:phoenix_pubsub, "~> 2.1"}` and `{:phoenix_live_view, "~> 1.0"}`.
+
+### Setup
+
+```elixir
+# application.ex
+children = [
+  {Puck.LiveView, pubsub: MyApp.PubSub}
+]
+```
+
+### Streaming to a LiveView
+
+```elixir
+defmodule MyAppWeb.ChatLive do
+  use MyAppWeb, :live_view
+
+  def mount(_params, _session, socket) do
+    {:ok, Puck.LiveView.assign_defaults(socket, build_client())}
+  end
+
+  def handle_event("send", %{"message" => message}, socket) do
+    {:noreply, Puck.LiveView.send_message(socket, message,
+      markdown: &MDEx.to_html!/1,
+      on_done: fn _response, state ->
+        MyApp.Messages.save(state.stream_id, state.content)
+      end
+    )}
+  end
+
+  def handle_event("cancel", _params, socket) do
+    {:noreply, Puck.LiveView.cancel(socket)}
+  end
+
+  def handle_info({:puck, event}, socket) do
+    {:noreply, Puck.LiveView.handle_event(event, socket)}
+  end
+
+  defp build_client do
+    Puck.Client.new(
+      {Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+      system_prompt: "You are a helpful assistant."
+    )
+  end
+end
+```
+
+### Reconnecting to a Stream
+
+Store the `puck_stream_id` (e.g. in the URL) and call `subscribe/2` on mount:
+
+```elixir
+def mount(%{"stream_id" => stream_id}, _session, socket) do
+  socket =
+    socket
+    |> Puck.LiveView.assign_defaults(build_client())
+    |> Puck.LiveView.subscribe(stream_id)
+
+  {:ok, socket}
+end
+```
+
+This reads the stream's current state from ETS — works even if the stream's
+GenServer has crashed. If the entry has expired, `puck_status` is set to `:not_found`.
 
 ## Acknowledgments
 
