@@ -126,6 +126,21 @@ defmodule Puck.Integration.ClaudeAgentSDKTest do
     end
 
     @tag timeout: 120_000
+    test "emits partial streaming chunks", %{client: client} do
+      {:ok, stream, _ctx} =
+        Puck.stream(client, "Say hello in a short sentence.", Puck.Context.new())
+
+      chunks = Enum.to_list(stream)
+      partial = Enum.filter(chunks, &(Map.get(&1.metadata, :partial) == true))
+
+      assert partial != [], "expected at least one partial chunk from stream_event handling"
+
+      Enum.each(partial, fn chunk ->
+        assert is_binary(chunk.content)
+      end)
+    end
+
+    @tag timeout: 120_000
     test "can collect final result from stream", %{client: client} do
       {:ok, stream, _ctx} =
         Puck.stream(client, "What is the capital of France? Answer briefly.", Puck.Context.new())

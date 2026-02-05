@@ -184,6 +184,169 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
       end
     end
 
+    describe "stream/3 partial chunks" do
+      test "emits partial chunks for content_block_delta stream events", %{config: config} do
+        stub(ClaudeAgentSDK, :query, fn _prompt, _opts ->
+          [
+            %ClaudeAgentSDK.Message{
+              type: :stream_event,
+              data: %{
+                event: %{
+                  "type" => "content_block_delta",
+                  "delta" => %{"text" => "hello"}
+                }
+              },
+              raw: %{}
+            },
+            %ClaudeAgentSDK.Message{
+              type: :result,
+              subtype: :success,
+              data: %{
+                session_id: "s1",
+                result: "hello",
+                subtype: :success,
+                usage: %{input_tokens: 1, output_tokens: 1}
+              },
+              raw: %{}
+            }
+          ]
+        end)
+
+        messages = [Message.new(:user, "hi")]
+        {:ok, stream} = Backend.stream(config, messages, [])
+        chunks = Enum.to_list(stream)
+
+        partial = Enum.filter(chunks, &(&1.metadata[:partial] == true))
+        assert length(partial) == 1
+        assert hd(partial).content == "hello"
+      end
+
+      test "emits partial chunks for EventParser-transformed text_delta events", %{config: config} do
+        stub(ClaudeAgentSDK, :query, fn _prompt, _opts ->
+          [
+            %ClaudeAgentSDK.Message{
+              type: :stream_event,
+              data: %{
+                event: %{type: :text_delta, text: "hello", accumulated: "hello"}
+              },
+              raw: %{}
+            },
+            %ClaudeAgentSDK.Message{
+              type: :result,
+              subtype: :success,
+              data: %{
+                session_id: "s1",
+                result: "hello",
+                subtype: :success,
+                usage: %{input_tokens: 1, output_tokens: 1}
+              },
+              raw: %{}
+            }
+          ]
+        end)
+
+        messages = [Message.new(:user, "hi")]
+        {:ok, stream} = Backend.stream(config, messages, [])
+        chunks = Enum.to_list(stream)
+
+        partial = Enum.filter(chunks, &(&1.metadata[:partial] == true))
+        assert length(partial) == 1
+        assert hd(partial).content == "hello"
+      end
+
+      test "ignores non-delta stream events", %{config: config} do
+        stub(ClaudeAgentSDK, :query, fn _prompt, _opts ->
+          [
+            %ClaudeAgentSDK.Message{
+              type: :stream_event,
+              data: %{
+                event: %{
+                  "type" => "content_block_start",
+                  "content_block" => %{"type" => "text", "text" => ""}
+                }
+              },
+              raw: %{}
+            },
+            %ClaudeAgentSDK.Message{
+              type: :result,
+              subtype: :success,
+              data: %{
+                session_id: "s1",
+                result: "done",
+                subtype: :success,
+                usage: %{input_tokens: 1, output_tokens: 1}
+              },
+              raw: %{}
+            }
+          ]
+        end)
+
+        messages = [Message.new(:user, "hi")]
+        {:ok, stream} = Backend.stream(config, messages, [])
+        chunks = Enum.to_list(stream)
+
+        partial = Enum.filter(chunks, &(&1.metadata[:partial] == true))
+        assert partial == []
+      end
+
+      test "collects multiple partial chunks from a stream", %{config: config} do
+        stub(ClaudeAgentSDK, :query, fn _prompt, _opts ->
+          [
+            %ClaudeAgentSDK.Message{
+              type: :stream_event,
+              data: %{
+                event: %{
+                  "type" => "content_block_delta",
+                  "delta" => %{"text" => "one"}
+                }
+              },
+              raw: %{}
+            },
+            %ClaudeAgentSDK.Message{
+              type: :stream_event,
+              data: %{
+                event: %{
+                  "type" => "content_block_delta",
+                  "delta" => %{"text" => " two"}
+                }
+              },
+              raw: %{}
+            },
+            %ClaudeAgentSDK.Message{
+              type: :stream_event,
+              data: %{
+                event: %{
+                  "type" => "content_block_delta",
+                  "delta" => %{"text" => " three"}
+                }
+              },
+              raw: %{}
+            },
+            %ClaudeAgentSDK.Message{
+              type: :result,
+              subtype: :success,
+              data: %{
+                session_id: "s1",
+                result: "one two three",
+                subtype: :success,
+                usage: %{input_tokens: 1, output_tokens: 3}
+              },
+              raw: %{}
+            }
+          ]
+        end)
+
+        messages = [Message.new(:user, "count")]
+        {:ok, stream} = Backend.stream(config, messages, [])
+        chunks = Enum.to_list(stream)
+
+        partial = Enum.filter(chunks, &(&1.metadata[:partial] == true))
+        assert length(partial) == 3
+        texts = Enum.map(partial, & &1.content)
+        assert texts == ["one", " two", " three"]
+      end
+    end
+
     describe "stream/3 session resume" do
       test "starts new session without session_id", %{config: config} do
         expect(ClaudeAgentSDK, :query, fn "hello", _opts ->
