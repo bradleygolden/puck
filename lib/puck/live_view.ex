@@ -1,4 +1,4 @@
-if Code.ensure_loaded?(Phoenix.PubSub) do
+if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component) do
   defmodule Puck.LiveView do
     @moduledoc """
     Durable streaming integration for Phoenix LiveView.
@@ -158,43 +158,50 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       {stream_id, opts} = Keyword.pop_lazy(opts, :stream_id, &generate_id/0)
 
       pubsub = pubsub()
+      previous_stream_id = socket.assigns.puck_stream_id
 
-      if socket.assigns.puck_stream_id do
-        Phoenix.PubSub.unsubscribe(pubsub, topic(socket.assigns.puck_stream_id))
-      end
-
+      maybe_unsubscribe(pubsub, previous_stream_id)
       Phoenix.PubSub.subscribe(pubsub, topic(stream_id))
 
-      {:ok, _pid} =
-        DynamicSupervisor.start_child(
-          @dynamic_supervisor,
-          {Puck.LiveView.Stream,
-           [
-             stream_id: stream_id,
-             table: @table,
-             pubsub: pubsub,
-             registry: @registry,
-             client: socket.assigns.puck_client,
-             content: content,
-             context: socket.assigns.puck_context,
-             mode: mode,
-             markdown: markdown,
-             on_chunk: on_chunk,
-             on_done: on_done,
-             on_error: on_error,
-             ttl: ttl,
-             stream_opts: opts
-           ]}
-        )
+      case DynamicSupervisor.start_child(
+             @dynamic_supervisor,
+             {Puck.LiveView.Stream,
+              [
+                stream_id: stream_id,
+                table: @table,
+                pubsub: pubsub,
+                registry: @registry,
+                client: socket.assigns.puck_client,
+                content: content,
+                context: socket.assigns.puck_context,
+                mode: mode,
+                markdown: markdown,
+                on_chunk: on_chunk,
+                on_done: on_done,
+                on_error: on_error,
+                ttl: ttl,
+                stream_opts: opts
+              ]}
+           ) do
+        {:ok, _pid} ->
+          Phoenix.Component.assign(socket,
+            puck_stream_id: stream_id,
+            puck_content: "",
+            puck_thinking: "",
+            puck_markdown: "",
+            puck_status: :streaming,
+            puck_error: nil
+          )
 
-      Phoenix.Component.assign(socket,
-        puck_stream_id: stream_id,
-        puck_content: "",
-        puck_thinking: "",
-        puck_markdown: "",
-        puck_status: :streaming,
-        puck_error: nil
-      )
+        {:error, reason} ->
+          maybe_unsubscribe(pubsub, stream_id)
+          maybe_subscribe(pubsub, previous_stream_id)
+
+          Phoenix.Component.assign(socket,
+            puck_status: :error,
+            puck_error: {:failed_to_start_stream, reason}
+          )
+      end
     end
 
     @doc """
@@ -205,9 +212,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     """
     def subscribe(socket, stream_id) do
+      previous_stream_id = socket.assigns.puck_stream_id
+      maybe_unsubscribe(pubsub(), previous_stream_id)
+
       case :ets.lookup(@table, stream_id) do
         [{^stream_id, entry}] ->
-          Phoenix.PubSub.subscribe(pubsub(), topic(stream_id))
+          maybe_subscribe(pubsub(), stream_id)
 
           Phoenix.Component.assign(socket,
             puck_stream_id: stream_id,
@@ -282,12 +292,22 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         Puck.LiveView.Stream.cancel(@registry, socket.assigns.puck_stream_id)
       end
 
-      socket
+      Phoenix.Component.assign(socket, puck_status: :cancelled)
     end
 
     defp pubsub, do: :persistent_term.get({__MODULE__, :pubsub})
 
     defp topic(stream_id), do: "puck:stream:#{stream_id}"
+
+    defp maybe_unsubscribe(_pubsub, nil), do: :ok
+
+    defp maybe_unsubscribe(pubsub, stream_id),
+      do: Phoenix.PubSub.unsubscribe(pubsub, topic(stream_id))
+
+    defp maybe_subscribe(_pubsub, nil), do: :ok
+
+    defp maybe_subscribe(pubsub, stream_id),
+      do: Phoenix.PubSub.subscribe(pubsub, topic(stream_id))
 
     defp generate_id do
       Base.encode64(:crypto.strong_rand_bytes(16), padding: false)

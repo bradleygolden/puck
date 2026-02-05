@@ -108,6 +108,24 @@ defmodule Puck.LiveViewTest do
 
       assert_receive {:puck, {:chunk, :markdown, "<b>hello</b>"}}, 1000
     end
+
+    test "returns error assigns instead of crashing when stream start fails" do
+      client = Client.new({Mock, stream_chunks: ["a"]})
+
+      socket =
+        build_socket()
+        |> Puck.LiveView.assign_defaults(client)
+        |> Puck.LiveView.send_message("first", stream_id: "duplicate-id")
+
+      assert socket.assigns.puck_status == :streaming
+      assert_receive {:puck, {:done, _, _}}, 1000
+
+      second_socket = Puck.LiveView.send_message(socket, "second", stream_id: "duplicate-id")
+
+      assert second_socket.assigns.puck_status == :error
+      assert {:failed_to_start_stream, _reason} = second_socket.assigns.puck_error
+      assert second_socket.assigns.puck_stream_id == "duplicate-id"
+    end
   end
 
   describe "subscribe/2" do
@@ -139,6 +157,36 @@ defmodule Puck.LiveViewTest do
         |> Puck.LiveView.subscribe("nonexistent")
 
       assert socket.assigns.puck_status == :not_found
+    end
+
+    test "unsubscribes previous topic before subscribing to new stream" do
+      client = Client.new({Mock, response: "x"})
+      stream_1 = "stream-1"
+      stream_2 = "stream-2"
+
+      :ets.insert(
+        Puck.LiveView.ETS,
+        {stream_1, %{content: "", thinking: "", markdown: "", status: :done, error: nil}}
+      )
+
+      :ets.insert(
+        Puck.LiveView.ETS,
+        {stream_2, %{content: "", thinking: "", markdown: "", status: :done, error: nil}}
+      )
+
+      _socket =
+        build_socket()
+        |> Puck.LiveView.assign_defaults(client)
+        |> Puck.LiveView.subscribe(stream_1)
+        |> Puck.LiveView.subscribe(stream_2)
+
+      Phoenix.PubSub.broadcast(
+        @pubsub,
+        "puck:stream:#{stream_1}",
+        {:puck, {:chunk, :content, "stale"}}
+      )
+
+      refute_receive {:puck, {:chunk, :content, "stale"}}, 100
     end
   end
 
@@ -207,7 +255,9 @@ defmodule Puck.LiveViewTest do
         |> Puck.LiveView.send_message("test", mode: :call)
 
       Process.sleep(50)
-      Puck.LiveView.cancel(socket)
+      cancelled_socket = Puck.LiveView.cancel(socket)
+
+      assert cancelled_socket.assigns.puck_status == :cancelled
 
       assert_receive {:puck, {:cancelled, _}}, 1000
     end
@@ -217,7 +267,8 @@ defmodule Puck.LiveViewTest do
         build_socket()
         |> Puck.LiveView.assign_defaults(Client.new({Mock, response: "x"}))
 
-      assert socket == Puck.LiveView.cancel(socket)
+      cancelled_socket = Puck.LiveView.cancel(socket)
+      assert cancelled_socket.assigns.puck_status == :cancelled
     end
   end
 end
