@@ -307,7 +307,17 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
 
     defp to_chunk(%ClaudeAgentSDK.Message{type: :stream_event, data: data}) do
       case data do
-        %{event: %{type: "content_block_delta", delta: %{text: text}}} when is_binary(text) ->
+        %{event: %{"type" => "content_block_delta", "delta" => %{"text" => text}}}
+        when is_binary(text) ->
+          [
+            %{
+              type: :content,
+              content: text,
+              metadata: %{backend: :claude_agent_sdk, partial: true}
+            }
+          ]
+
+        %{event: %{type: :text_delta, text: text}} when is_binary(text) ->
           [
             %{
               type: :content,
