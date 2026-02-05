@@ -3,15 +3,17 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     @moduledoc """
     Durable streaming integration for Phoenix LiveView.
 
-    Stream state lives in an ETS table owned by this supervisor, so it survives
-    GenServer crashes. LiveViews subscribe via PubSub and can reconnect to
-    in-progress or completed streams.
+    Stream state is stored through a configurable `Puck.LiveView.Store`
+    implementation. The default store uses ETS. LiveViews subscribe via PubSub
+    and can reconnect to in-progress or completed streams.
 
     ## Setup
 
         # application.ex
         children = [
           {Puck.LiveView, pubsub: MyApp.PubSub}
+          # or with a custom store:
+          # {Puck.LiveView, pubsub: MyApp.PubSub, store: {MyApp.PuckStore, repo: MyApp.Repo}}
         ]
 
     ## Usage
@@ -76,7 +78,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
 
     alias Puck.Context
 
-    @table Puck.LiveView.ETS
     @registry Puck.LiveView.Registry
     @dynamic_supervisor Puck.LiveView.DynamicSupervisor
 
@@ -90,17 +91,18 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
       sweep_interval = Keyword.get(opts, :sweep_interval, 30_000)
       max_age = Keyword.get(opts, :max_age, 300_000)
 
-      :persistent_term.put({__MODULE__, :pubsub}, pubsub)
+      {store_module, store_opts} =
+        normalize_store(Keyword.get(opts, :store, Puck.LiveView.Store.ETS))
 
-      if :ets.whereis(@table) == :undefined do
-        :ets.new(@table, [:named_table, :set, :public, write_concurrency: true])
-      end
+      :persistent_term.put({__MODULE__, :pubsub}, pubsub)
+      {:ok, store_config} = store_module.init(Keyword.put_new(store_opts, :registry, @registry))
+      :persistent_term.put({__MODULE__, :store}, {store_module, store_config})
 
       children = [
         {Registry, keys: :unique, name: @registry},
         {DynamicSupervisor, name: @dynamic_supervisor, strategy: :one_for_one},
         {Puck.LiveView.Sweeper,
-         table: @table, registry: @registry, sweep_interval: sweep_interval, max_age: max_age}
+         store: {store_module, store_config}, sweep_interval: sweep_interval, max_age: max_age}
       ]
 
       Supervisor.init(children, strategy: :one_for_one)
@@ -158,6 +160,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
       {stream_id, opts} = Keyword.pop_lazy(opts, :stream_id, &generate_id/0)
 
       pubsub = pubsub()
+      store = store()
       previous_stream_id = socket.assigns.puck_stream_id
 
       maybe_unsubscribe(pubsub, previous_stream_id)
@@ -168,8 +171,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
              {Puck.LiveView.Stream,
               [
                 stream_id: stream_id,
-                table: @table,
                 pubsub: pubsub,
+                store: store,
                 registry: @registry,
                 client: socket.assigns.puck_client,
                 content: content,
@@ -212,11 +215,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
 
     """
     def subscribe(socket, stream_id) do
+      {store_module, store_config} = store()
       previous_stream_id = socket.assigns.puck_stream_id
       maybe_unsubscribe(pubsub(), previous_stream_id)
 
-      case :ets.lookup(@table, stream_id) do
-        [{^stream_id, entry}] ->
+      case store_module.get_stream(store_config, stream_id) do
+        {:ok, entry} ->
           maybe_subscribe(pubsub(), stream_id)
 
           Phoenix.Component.assign(socket,
@@ -228,10 +232,17 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
             puck_error: entry.error
           )
 
-        [] ->
+        :not_found ->
           Phoenix.Component.assign(socket,
             puck_stream_id: stream_id,
             puck_status: :not_found
+          )
+
+        {:error, reason} ->
+          Phoenix.Component.assign(socket,
+            puck_stream_id: stream_id,
+            puck_status: :error,
+            puck_error: {:failed_to_load_stream, reason}
           )
       end
     end
@@ -296,6 +307,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     end
 
     defp pubsub, do: :persistent_term.get({__MODULE__, :pubsub})
+    defp store, do: :persistent_term.get({__MODULE__, :store})
 
     defp topic(stream_id), do: "puck:stream:#{stream_id}"
 
@@ -308,6 +320,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
 
     defp maybe_subscribe(pubsub, stream_id),
       do: Phoenix.PubSub.subscribe(pubsub, topic(stream_id))
+
+    defp normalize_store({store_module, store_opts})
+         when is_atom(store_module) and is_list(store_opts),
+         do: {store_module, store_opts}
+
+    defp normalize_store(store_module) when is_atom(store_module), do: {store_module, []}
 
     defp generate_id do
       Base.encode64(:crypto.strong_rand_bytes(16), padding: false)

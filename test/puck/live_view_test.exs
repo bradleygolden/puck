@@ -16,6 +16,8 @@ defmodule Puck.LiveViewTest do
     %Phoenix.LiveView.Socket{}
   end
 
+  defp current_store, do: :persistent_term.get({Puck.LiveView, :store})
+
   describe "assign_defaults/3" do
     test "sets all default assigns" do
       client = Client.new({Mock, response: "test"})
@@ -163,16 +165,25 @@ defmodule Puck.LiveViewTest do
       client = Client.new({Mock, response: "x"})
       stream_1 = "stream-1"
       stream_2 = "stream-2"
+      {store_module, store_config} = current_store()
 
-      :ets.insert(
-        Puck.LiveView.ETS,
-        {stream_1, %{content: "", thinking: "", markdown: "", status: :done, error: nil}}
-      )
+      :ok =
+        store_module.put_stream(store_config, stream_1, %{
+          content: "",
+          thinking: "",
+          markdown: "",
+          status: :done,
+          error: nil
+        })
 
-      :ets.insert(
-        Puck.LiveView.ETS,
-        {stream_2, %{content: "", thinking: "", markdown: "", status: :done, error: nil}}
-      )
+      :ok =
+        store_module.put_stream(store_config, stream_2, %{
+          content: "",
+          thinking: "",
+          markdown: "",
+          status: :done,
+          error: nil
+        })
 
       _socket =
         build_socket()

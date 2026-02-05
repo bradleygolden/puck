@@ -24,8 +24,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       Process.flag(:trap_exit, true)
 
       stream_id = Keyword.fetch!(opts, :stream_id)
-      table = Keyword.fetch!(opts, :table)
       pubsub = Keyword.fetch!(opts, :pubsub)
+      store = Keyword.fetch!(opts, :store)
       client = Keyword.fetch!(opts, :client)
       content = Keyword.fetch!(opts, :content)
       context = Keyword.fetch!(opts, :context)
@@ -49,11 +49,9 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         ttl: ttl
       }
 
-      :ets.insert(table, {stream_id, initial_entry})
-
       state = %{
         stream_id: stream_id,
-        table: table,
+        store: store,
         pubsub: pubsub,
         content: "",
         thinking: "",
@@ -64,15 +62,21 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         on_done: on_done,
         on_error: on_error,
         ttl: ttl,
+        seq: 0,
         task_ref: nil,
         task_pid: nil,
         cancelled: false
       }
 
-      me = self()
-      task = Task.async(fn -> consume(me, client, content, context, mode, stream_opts) end)
+      case persist_put_stream(state, initial_entry) do
+        :ok ->
+          me = self()
+          task = Task.async(fn -> consume(me, client, content, context, mode, stream_opts) end)
+          {:ok, %{state | task_ref: task.ref, task_pid: task.pid}}
 
-      {:ok, %{state | task_ref: task.ref, task_pid: task.pid}}
+        {:error, reason} ->
+          {:stop, {:store_error, reason}}
+      end
     end
 
     @impl true
@@ -84,10 +88,18 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     @impl true
     def handle_info({:stream_chunk, chunk}, state) do
       state = accumulate_chunk(state, chunk)
-      write_ets(state)
-      broadcast_chunk(state, chunk)
-      safe_callback(state.on_chunk, [chunk, snapshot(state)])
-      {:noreply, state}
+      next_seq = state.seq + 1
+      state = %{state | seq: next_seq}
+
+      case persist_append_chunk(state, next_seq, chunk) do
+        :ok ->
+          broadcast_chunk(state, chunk)
+          safe_callback(state.on_chunk, [chunk, snapshot(state)])
+          {:noreply, state}
+
+        {:error, reason} ->
+          handle_stream_error(state, {:store_error, reason})
+      end
     end
 
     def handle_info({ref, {:stream_done, result_context}}, %{task_ref: ref} = state) do
@@ -104,11 +116,17 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         Context.add_message(result_context, :assistant, response.content, response.metadata)
 
       state = %{state | context: final_context}
-      write_ets_done(state, response, final_context)
-      broadcast_done(state, response, final_context)
-      safe_callback(state.on_done, [response, snapshot(state)])
-      schedule_stop(state.ttl)
-      {:noreply, state}
+
+      case persist_done(state, response, final_context) do
+        :ok ->
+          broadcast_done(state, response, final_context)
+          safe_callback(state.on_done, [response, snapshot(state)])
+          schedule_stop(state.ttl)
+          {:noreply, state}
+
+        {:error, reason} ->
+          handle_stream_error(state, {:store_error, reason})
+      end
     end
 
     def handle_info({ref, {:call_done, response, result_context}}, %{task_ref: ref} = state) do
@@ -126,11 +144,16 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
           context: result_context
       }
 
-      write_ets_done(state, response, result_context)
-      broadcast_done(state, response, result_context)
-      safe_callback(state.on_done, [response, snapshot(state)])
-      schedule_stop(state.ttl)
-      {:noreply, state}
+      case persist_done(state, response, result_context) do
+        :ok ->
+          broadcast_done(state, response, result_context)
+          safe_callback(state.on_done, [response, snapshot(state)])
+          schedule_stop(state.ttl)
+          {:noreply, state}
+
+        {:error, reason} ->
+          handle_stream_error(state, {:store_error, reason})
+      end
     end
 
     def handle_info({ref, {:error, reason}}, %{task_ref: ref} = state) do
@@ -140,10 +163,15 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     def handle_info({:DOWN, ref, :process, _pid, reason}, %{task_ref: ref} = state) do
       if state.cancelled do
-        write_ets_cancelled(state)
-        broadcast_cancelled(state)
-        schedule_stop(state.ttl)
-        {:noreply, state}
+        case persist_cancelled(state) do
+          :ok ->
+            broadcast_cancelled(state)
+            schedule_stop(state.ttl)
+            {:noreply, state}
+
+          {:error, store_reason} ->
+            handle_stream_error(state, {:store_error, store_reason})
+        end
       else
         handle_stream_error(state, reason)
       end
@@ -238,76 +266,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       )
     end
 
-    # -- ETS writes --
-
-    defp write_ets(state) do
-      entry = %{
-        content: state.content,
-        thinking: state.thinking,
-        markdown: state.markdown,
-        status: :streaming,
-        error: nil,
-        response: nil,
-        context: state.context,
-        updated_at: System.monotonic_time(:millisecond),
-        ttl: state.ttl
-      }
-
-      :ets.insert(state.table, {state.stream_id, entry})
-    end
-
-    defp write_ets_done(state, response, context) do
-      entry = %{
-        content: state.content,
-        thinking: state.thinking,
-        markdown: state.markdown,
-        status: :done,
-        error: nil,
-        response: response,
-        context: context,
-        updated_at: System.monotonic_time(:millisecond),
-        ttl: state.ttl
-      }
-
-      :ets.insert(state.table, {state.stream_id, entry})
-    end
-
-    defp write_ets_cancelled(state) do
-      entry = %{
-        content: state.content,
-        thinking: state.thinking,
-        markdown: state.markdown,
-        status: :cancelled,
-        error: nil,
-        response: nil,
-        context: state.context,
-        updated_at: System.monotonic_time(:millisecond),
-        ttl: state.ttl
-      }
-
-      :ets.insert(state.table, {state.stream_id, entry})
-    end
-
-    defp write_ets_error(state, reason) do
-      entry = %{
-        content: state.content,
-        thinking: state.thinking,
-        markdown: state.markdown,
-        status: :error,
-        error: reason,
-        response: nil,
-        context: state.context,
-        updated_at: System.monotonic_time(:millisecond),
-        ttl: state.ttl
-      }
-
-      :ets.insert(state.table, {state.stream_id, entry})
-    end
+    # -- Store writes --
 
     # -- Error handling --
 
     defp handle_stream_error(state, reason) do
-      write_ets_error(state, reason)
+      _ = persist_error(state, reason)
 
       Phoenix.PubSub.broadcast(
         state.pubsub,
@@ -328,7 +292,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         content: state.content,
         thinking: state.thinking,
         markdown: state.markdown,
-        context: state.context
+        context: state.context,
+        ttl: state.ttl
       }
     end
 
@@ -343,5 +308,85 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     defp topic(stream_id), do: "puck:stream:#{stream_id}"
 
     defp schedule_stop(ttl), do: Process.send_after(self(), :stop, ttl)
+
+    defp persist_put_stream(state, attrs) do
+      {store_module, store_config} = state.store
+      store_module.put_stream(store_config, state.stream_id, attrs)
+    end
+
+    defp persist_append_chunk(state, seq, chunk) do
+      {store_module, store_config} = state.store
+      store_module.append_chunk(store_config, state.stream_id, seq, chunk, streaming_entry(state))
+    end
+
+    defp persist_done(state, response, context) do
+      {store_module, store_config} = state.store
+      store_module.mark_done(store_config, state.stream_id, response, context, done_entry(state))
+    end
+
+    defp persist_error(state, reason) do
+      {store_module, store_config} = state.store
+      store_module.mark_error(store_config, state.stream_id, reason, error_entry(state, reason))
+    end
+
+    defp persist_cancelled(state) do
+      {store_module, store_config} = state.store
+      store_module.mark_cancelled(store_config, state.stream_id, cancelled_entry(state))
+    end
+
+    defp streaming_entry(state) do
+      %{
+        content: state.content,
+        thinking: state.thinking,
+        markdown: state.markdown,
+        status: :streaming,
+        error: nil,
+        response: nil,
+        context: state.context,
+        updated_at: System.monotonic_time(:millisecond),
+        ttl: state.ttl
+      }
+    end
+
+    defp done_entry(state) do
+      %{
+        content: state.content,
+        thinking: state.thinking,
+        markdown: state.markdown,
+        status: :done,
+        error: nil,
+        context: state.context,
+        updated_at: System.monotonic_time(:millisecond),
+        ttl: state.ttl
+      }
+    end
+
+    defp error_entry(state, reason) do
+      %{
+        content: state.content,
+        thinking: state.thinking,
+        markdown: state.markdown,
+        status: :error,
+        error: reason,
+        response: nil,
+        context: state.context,
+        updated_at: System.monotonic_time(:millisecond),
+        ttl: state.ttl
+      }
+    end
+
+    defp cancelled_entry(state) do
+      %{
+        content: state.content,
+        thinking: state.thinking,
+        markdown: state.markdown,
+        status: :cancelled,
+        error: nil,
+        response: nil,
+        context: state.context,
+        updated_at: System.monotonic_time(:millisecond),
+        ttl: state.ttl
+      }
+    end
   end
 end

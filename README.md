@@ -707,8 +707,8 @@ image_bytes = File.read!("photo.png")
 
 ## LiveView Integration
 
-Stream LLM responses into Phoenix LiveView with durable state. Stream data lives in
-ETS (survives GenServer crashes), and LiveViews reconnect by reading directly from ETS.
+Stream LLM responses into Phoenix LiveView with durable state. Stream data is persisted
+through a configurable `Puck.LiveView.Store` implementation. The default store uses ETS.
 
 Requires `{:phoenix_pubsub, "~> 2.1"}` and `{:phoenix_live_view, "~> 1.0"}`.
 
@@ -718,6 +718,11 @@ Requires `{:phoenix_pubsub, "~> 2.1"}` and `{:phoenix_live_view, "~> 1.0"}`.
 # application.ex
 children = [
   {Puck.LiveView, pubsub: MyApp.PubSub}
+]
+
+# with a custom store (e.g., DB-backed)
+children = [
+  {Puck.LiveView, pubsub: MyApp.PubSub, store: {MyApp.PuckStore, repo: MyApp.Repo}}
 ]
 ```
 

@@ -6,7 +6,6 @@ defmodule Puck.LiveView.StreamTest do
   alias Puck.LiveView.Stream, as: StreamServer
 
   @pubsub Puck.LiveView.StreamTest.PubSub
-  @table Puck.LiveView.ETS
   @registry Puck.LiveView.Registry
   @dynamic_supervisor Puck.LiveView.DynamicSupervisor
 
@@ -38,8 +37,8 @@ defmodule Puck.LiveView.StreamTest do
         {StreamServer,
          [
            stream_id: stream_id,
-           table: @table,
            pubsub: @pubsub,
+           store: current_store(),
            registry: @registry,
            client: client,
            content: "test message",
@@ -59,6 +58,14 @@ defmodule Puck.LiveView.StreamTest do
 
   defp random_id, do: Base.encode64(:crypto.strong_rand_bytes(8), padding: false)
 
+  defp current_store, do: :persistent_term.get({Puck.LiveView, :store})
+
+  defp fetch_stream!(stream_id) do
+    {store_module, store_config} = current_store()
+    {:ok, stream} = store_module.get_stream(store_config, stream_id)
+    stream
+  end
+
   describe "streaming" do
     test "accumulates content and broadcasts chunks" do
       %{stream_id: id} = start_stream()
@@ -72,7 +79,7 @@ defmodule Puck.LiveView.StreamTest do
       assert response.finish_reason == :stop
       assert %Context{} = context
 
-      [{^id, entry}] = :ets.lookup(@table, id)
+      entry = fetch_stream!(id)
       assert entry.status == :done
       assert entry.content == "hello world"
     end
@@ -82,7 +89,7 @@ defmodule Puck.LiveView.StreamTest do
       %{stream_id: id} = start_stream(client: client, mode: :call)
 
       Process.sleep(50)
-      [{^id, entry}] = :ets.lookup(@table, id)
+      entry = fetch_stream!(id)
       assert entry.status == :streaming
     end
 
@@ -93,7 +100,7 @@ defmodule Puck.LiveView.StreamTest do
       assert_receive {:puck, {:chunk, :markdown, _}}, 1000
       assert_receive {:puck, {:done, _, _}}, 1000
 
-      [{^id, entry}] = :ets.lookup(@table, id)
+      entry = fetch_stream!(id)
       assert entry.markdown == "<p>hello world</p>"
     end
 
@@ -122,7 +129,7 @@ defmodule Puck.LiveView.StreamTest do
       %{stream_id: id} = start_stream(on_chunk: on_chunk)
 
       assert_receive {:puck, {:done, _, _}}, 1000
-      [{^id, entry}] = :ets.lookup(@table, id)
+      entry = fetch_stream!(id)
       assert entry.status == :done
     end
   end
@@ -145,7 +152,7 @@ defmodule Puck.LiveView.StreamTest do
 
       assert_receive {:puck, {:error, _reason}}, 1000
 
-      [{^id, entry}] = :ets.lookup(@table, id)
+      entry = fetch_stream!(id)
       assert entry.status == :error
     end
 
@@ -169,7 +176,7 @@ defmodule Puck.LiveView.StreamTest do
 
       assert_receive {:puck, {:cancelled, _}}, 1000
 
-      [{^id, entry}] = :ets.lookup(@table, id)
+      entry = fetch_stream!(id)
       assert entry.status == :cancelled
     end
 
