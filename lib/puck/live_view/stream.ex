@@ -34,7 +34,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       on_chunk = Keyword.get(opts, :on_chunk)
       on_done = Keyword.get(opts, :on_done)
       on_error = Keyword.get(opts, :on_error)
-      ttl = Keyword.get(opts, :ttl, 60_000)
       stream_opts = Keyword.get(opts, :stream_opts, [])
 
       initial_entry = %{
@@ -45,8 +44,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         error: nil,
         response: nil,
         context: context,
-        updated_at: System.monotonic_time(:millisecond),
-        ttl: ttl
+        updated_at: System.monotonic_time(:millisecond)
       }
 
       state = %{
@@ -61,8 +59,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         on_chunk: on_chunk,
         on_done: on_done,
         on_error: on_error,
-        ttl: ttl,
-        seq: 0,
         task_ref: nil,
         task_pid: nil,
         cancelled: false
@@ -88,10 +84,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     @impl true
     def handle_info({:stream_chunk, chunk}, state) do
       state = accumulate_chunk(state, chunk)
-      next_seq = state.seq + 1
-      state = %{state | seq: next_seq}
 
-      case persist_append_chunk(state, next_seq, chunk) do
+      case persist_snapshot(state, streaming_entry(state)) do
         :ok ->
           broadcast_chunk(state, chunk)
           safe_callback(state.on_chunk, [chunk, snapshot(state)])
@@ -117,12 +111,11 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
       state = %{state | context: final_context}
 
-      case persist_done(state, response, final_context) do
+      case persist_snapshot(state, done_entry(state, response, final_context)) do
         :ok ->
           broadcast_done(state, response, final_context)
           safe_callback(state.on_done, [response, snapshot(state)])
-          schedule_stop(state.ttl)
-          {:noreply, state}
+          {:stop, :normal, state}
 
         {:error, reason} ->
           handle_stream_error(state, {:store_error, reason})
@@ -144,12 +137,11 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
           context: result_context
       }
 
-      case persist_done(state, response, result_context) do
+      case persist_snapshot(state, done_entry(state, response, result_context)) do
         :ok ->
           broadcast_done(state, response, result_context)
           safe_callback(state.on_done, [response, snapshot(state)])
-          schedule_stop(state.ttl)
-          {:noreply, state}
+          {:stop, :normal, state}
 
         {:error, reason} ->
           handle_stream_error(state, {:store_error, reason})
@@ -163,11 +155,10 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     def handle_info({:DOWN, ref, :process, _pid, reason}, %{task_ref: ref} = state) do
       if state.cancelled do
-        case persist_cancelled(state) do
+        case persist_snapshot(state, cancelled_entry(state)) do
           :ok ->
             broadcast_cancelled(state)
-            schedule_stop(state.ttl)
-            {:noreply, state}
+            {:stop, :normal, state}
 
           {:error, store_reason} ->
             handle_stream_error(state, {:store_error, store_reason})
@@ -179,10 +170,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     def handle_info({:EXIT, _pid, _reason}, state) do
       {:noreply, state}
-    end
-
-    def handle_info(:stop, state) do
-      {:stop, :normal, state}
     end
 
     # -- Stream consumption (runs in Task) --
@@ -280,8 +267,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       )
 
       safe_callback(state.on_error, [reason, snapshot(state)])
-      schedule_stop(state.ttl)
-      {:noreply, state}
+      {:stop, :normal, state}
     end
 
     # -- Helpers --
@@ -292,8 +278,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         content: state.content,
         thinking: state.thinking,
         markdown: state.markdown,
-        context: state.context,
-        ttl: state.ttl
+        context: state.context
       }
     end
 
@@ -307,31 +292,19 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     defp topic(stream_id), do: "puck:stream:#{stream_id}"
 
-    defp schedule_stop(ttl), do: Process.send_after(self(), :stop, ttl)
-
     defp persist_put_stream(state, attrs) do
       {store_module, store_config} = state.store
       store_module.put_stream(store_config, state.stream_id, attrs)
     end
 
-    defp persist_append_chunk(state, seq, chunk) do
+    defp persist_snapshot(state, snapshot) do
       {store_module, store_config} = state.store
-      store_module.append_chunk(store_config, state.stream_id, seq, chunk, streaming_entry(state))
-    end
-
-    defp persist_done(state, response, context) do
-      {store_module, store_config} = state.store
-      store_module.mark_done(store_config, state.stream_id, response, context, done_entry(state))
+      store_module.put_stream(store_config, state.stream_id, snapshot)
     end
 
     defp persist_error(state, reason) do
       {store_module, store_config} = state.store
-      store_module.mark_error(store_config, state.stream_id, reason, error_entry(state, reason))
-    end
-
-    defp persist_cancelled(state) do
-      {store_module, store_config} = state.store
-      store_module.mark_cancelled(store_config, state.stream_id, cancelled_entry(state))
+      store_module.put_stream(store_config, state.stream_id, error_entry(state, reason))
     end
 
     defp streaming_entry(state) do
@@ -343,21 +316,20 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         error: nil,
         response: nil,
         context: state.context,
-        updated_at: System.monotonic_time(:millisecond),
-        ttl: state.ttl
+        updated_at: System.monotonic_time(:millisecond)
       }
     end
 
-    defp done_entry(state) do
+    defp done_entry(state, response, context) do
       %{
         content: state.content,
         thinking: state.thinking,
         markdown: state.markdown,
         status: :done,
         error: nil,
-        context: state.context,
-        updated_at: System.monotonic_time(:millisecond),
-        ttl: state.ttl
+        response: response,
+        context: context,
+        updated_at: System.monotonic_time(:millisecond)
       }
     end
 
@@ -370,8 +342,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         error: reason,
         response: nil,
         context: state.context,
-        updated_at: System.monotonic_time(:millisecond),
-        ttl: state.ttl
+        updated_at: System.monotonic_time(:millisecond)
       }
     end
 
@@ -384,8 +355,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         error: nil,
         response: nil,
         context: state.context,
-        updated_at: System.monotonic_time(:millisecond),
-        ttl: state.ttl
+        updated_at: System.monotonic_time(:millisecond)
       }
     end
   end

@@ -4,8 +4,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     Durable streaming integration for Phoenix LiveView.
 
     Stream state is stored through a configurable `Puck.LiveView.Store`
-    implementation. The default store uses ETS. LiveViews subscribe via PubSub
-    and can reconnect to in-progress or completed streams.
+    implementation. The default store uses ETS snapshots. LiveViews subscribe
+    via PubSub and can reconnect to in-progress or completed streams.
 
     ## Setup
 
@@ -13,7 +13,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
         children = [
           {Puck.LiveView, pubsub: MyApp.PubSub}
           # or with a custom store:
-          # {Puck.LiveView, pubsub: MyApp.PubSub, store: {MyApp.PuckStore, repo: MyApp.Repo}}
+          # {Puck.LiveView, pubsub: MyApp.PubSub, store: MyApp.PuckStore}
         ]
 
     ## Usage
@@ -89,20 +89,21 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     def init(opts) do
       pubsub = Keyword.fetch!(opts, :pubsub)
       sweep_interval = Keyword.get(opts, :sweep_interval, 30_000)
-      max_age = Keyword.get(opts, :max_age, 300_000)
+      retention_ms = Keyword.get(opts, :retention_ms, 300_000)
 
       {store_module, store_opts} =
         normalize_store(Keyword.get(opts, :store, Puck.LiveView.Store.ETS))
 
-      :persistent_term.put({__MODULE__, :pubsub}, pubsub)
       {:ok, store_config} = store_module.init(Keyword.put_new(store_opts, :registry, @registry))
-      :persistent_term.put({__MODULE__, :store}, {store_module, store_config})
 
       children = [
+        {Puck.LiveView.Config, pubsub: pubsub, store: {store_module, store_config}},
         {Registry, keys: :unique, name: @registry},
         {DynamicSupervisor, name: @dynamic_supervisor, strategy: :one_for_one},
         {Puck.LiveView.Sweeper,
-         store: {store_module, store_config}, sweep_interval: sweep_interval, max_age: max_age}
+         store: {store_module, store_config},
+         sweep_interval: sweep_interval,
+         retention_ms: retention_ms}
       ]
 
       Supervisor.init(children, strategy: :one_for_one)
@@ -144,7 +145,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     - `:on_chunk` - `fn chunk, state_snapshot -> any() end`
     - `:on_done` - `fn response, state_snapshot -> any() end`
     - `:on_error` - `fn reason, state_snapshot -> any() end`
-    - `:ttl` - Milliseconds to keep ETS entry after completion (default: 60,000)
     - `:stream_id` - Custom stream ID (auto-generated if omitted)
 
     Remaining options are passed through to `Puck.stream/4` or `Puck.call/4`.
@@ -156,11 +156,10 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
       {on_chunk, opts} = Keyword.pop(opts, :on_chunk)
       {on_done, opts} = Keyword.pop(opts, :on_done)
       {on_error, opts} = Keyword.pop(opts, :on_error)
-      {ttl, opts} = Keyword.pop(opts, :ttl, 60_000)
+      {_ttl, opts} = Keyword.pop(opts, :ttl)
       {stream_id, opts} = Keyword.pop_lazy(opts, :stream_id, &generate_id/0)
 
-      pubsub = pubsub()
-      store = store()
+      %{pubsub: pubsub, store: store} = config()
       previous_stream_id = socket.assigns.puck_stream_id
 
       maybe_unsubscribe(pubsub, previous_stream_id)
@@ -182,7 +181,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
                 on_chunk: on_chunk,
                 on_done: on_done,
                 on_error: on_error,
-                ttl: ttl,
                 stream_opts: opts
               ]}
            ) do
@@ -210,26 +208,26 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     @doc """
     Reconnects to an existing stream by reading state from ETS.
 
-    Works even if the stream's GenServer has crashed, since ETS is the source
+    Works even if the stream's GenServer has crashed, since the snapshot store is the source
     of truth. Sets `puck_status` to `:not_found` if the entry has expired.
 
     """
     def subscribe(socket, stream_id) do
-      {store_module, store_config} = store()
+      %{pubsub: pubsub, store: {store_module, store_config}} = config()
       previous_stream_id = socket.assigns.puck_stream_id
-      maybe_unsubscribe(pubsub(), previous_stream_id)
+      maybe_unsubscribe(pubsub, previous_stream_id)
 
       case store_module.get_stream(store_config, stream_id) do
         {:ok, entry} ->
-          maybe_subscribe(pubsub(), stream_id)
+          maybe_subscribe(pubsub, stream_id)
 
           Phoenix.Component.assign(socket,
             puck_stream_id: stream_id,
-            puck_content: entry.content,
-            puck_thinking: entry.thinking,
-            puck_markdown: entry.markdown,
-            puck_status: entry.status,
-            puck_error: entry.error
+            puck_content: Map.get(entry, :content, ""),
+            puck_thinking: Map.get(entry, :thinking, ""),
+            puck_markdown: Map.get(entry, :markdown, ""),
+            puck_status: Map.get(entry, :status, :idle),
+            puck_error: Map.get(entry, :error)
           )
 
         :not_found ->
@@ -306,8 +304,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
       Phoenix.Component.assign(socket, puck_status: :cancelled)
     end
 
-    defp pubsub, do: :persistent_term.get({__MODULE__, :pubsub})
-    defp store, do: :persistent_term.get({__MODULE__, :store})
+    defp config do
+      case Puck.LiveView.Config.get() do
+        {:ok, config} -> config
+        {:error, :not_started} -> raise "Puck.LiveView supervisor is not started"
+      end
+    end
 
     defp topic(stream_id), do: "puck:stream:#{stream_id}"
 

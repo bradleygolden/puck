@@ -708,7 +708,8 @@ image_bytes = File.read!("photo.png")
 ## LiveView Integration
 
 Stream LLM responses into Phoenix LiveView with durable state. Stream data is persisted
-through a configurable `Puck.LiveView.Store` implementation. The default store uses ETS.
+through a configurable snapshot store (`Puck.LiveView.Store`). Core ships with ETS only.
+The store contract in core is intentionally small: put snapshot, get snapshot, delete, sweep.
 
 Requires `{:phoenix_pubsub, "~> 2.1"}` and `{:phoenix_live_view, "~> 1.0"}`.
 
@@ -717,12 +718,12 @@ Requires `{:phoenix_pubsub, "~> 2.1"}` and `{:phoenix_live_view, "~> 1.0"}`.
 ```elixir
 # application.ex
 children = [
-  {Puck.LiveView, pubsub: MyApp.PubSub}
+  {Puck.LiveView, pubsub: MyApp.PubSub, retention_ms: :timer.minutes(5)}
 ]
 
-# with a custom store (e.g., DB-backed)
+# with a custom store adapter
 children = [
-  {Puck.LiveView, pubsub: MyApp.PubSub, store: {MyApp.PuckStore, repo: MyApp.Repo}}
+  {Puck.LiveView, pubsub: MyApp.PubSub, store: MyApp.PuckStore}
 ]
 ```
 
@@ -777,8 +778,34 @@ def mount(%{"stream_id" => stream_id}, _session, socket) do
 end
 ```
 
-This reads the stream's current state from ETS — works even if the stream's
+This reads the stream's current snapshot from the configured store — works even if the stream's
 GenServer has crashed. If the entry has expired, `puck_status` is set to `:not_found`.
+
+### What Core Includes
+
+- Stable `Puck.LiveView` API (`assign_defaults/3`, `send_message/3`, `subscribe/2`, `handle_event/2`, `streaming?/1`, `cancel/1`)
+- PubSub streaming for content/thinking/markdown/done/error/cancelled events
+- Snapshot persistence + reconnect
+- One retention model (`retention_ms`) enforced by sweeper
+
+### What Core Leaves To Adapters
+
+- Database-specific schema choices
+- Audit/event history storage
+- Multi-node replication details
+
+## LiveView Migration (PR #8 -> current)
+
+- Removed built-in `Puck.LiveView.Store.Ecto` from core
+- Simplified `Puck.LiveView.Store` to snapshot-focused callbacks
+- Replaced `persistent_term` runtime config with an internal config process
+- Consolidated retention to one policy: `retention_ms` (supervisor option)
+
+Impact:
+
+- `Puck.LiveView` public API is unchanged
+- Existing usage without custom store continues to work
+- Custom stores from PR #8 need to implement the new smaller store behavior
 
 ## Acknowledgments
 

@@ -5,10 +5,21 @@ defmodule Puck.LiveViewTest do
   alias Puck.{Client, Context, Response}
 
   @pubsub Puck.LiveViewTest.PubSub
+  @table Puck.LiveViewTest.Store
+  @registry Puck.LiveView.Registry
 
   setup do
     start_supervised!({Phoenix.PubSub, name: @pubsub})
-    start_supervised!({Puck.LiveView, pubsub: @pubsub, sweep_interval: :timer.minutes(10)})
+
+    start_supervised!(
+      {Puck.LiveView,
+       pubsub: @pubsub,
+       sweep_interval: :timer.minutes(10),
+       store: {Puck.LiveView.Store.ETS, session_table: @table}}
+    )
+
+    :ets.delete_all_objects(@table)
+    flush_mailbox()
     :ok
   end
 
@@ -16,7 +27,13 @@ defmodule Puck.LiveViewTest do
     %Phoenix.LiveView.Socket{}
   end
 
-  defp current_store, do: :persistent_term.get({Puck.LiveView, :store})
+  defp flush_mailbox do
+    receive do
+      _ -> flush_mailbox()
+    after
+      0 -> :ok
+    end
+  end
 
   describe "assign_defaults/3" do
     test "sets all default assigns" do
@@ -112,17 +129,17 @@ defmodule Puck.LiveViewTest do
     end
 
     test "returns error assigns instead of crashing when stream start fails" do
-      client = Client.new({Mock, stream_chunks: ["a"]})
+      client = Client.new({Mock, response: "slow", delay: 300})
 
       socket =
         build_socket()
         |> Puck.LiveView.assign_defaults(client)
-        |> Puck.LiveView.send_message("first", stream_id: "duplicate-id")
+        |> Puck.LiveView.send_message("first", stream_id: "duplicate-id", mode: :call)
 
       assert socket.assigns.puck_status == :streaming
-      assert_receive {:puck, {:done, _, _}}, 1000
 
-      second_socket = Puck.LiveView.send_message(socket, "second", stream_id: "duplicate-id")
+      second_socket =
+        Puck.LiveView.send_message(socket, "second", stream_id: "duplicate-id", mode: :call)
 
       assert second_socket.assigns.puck_status == :error
       assert {:failed_to_start_stream, _reason} = second_socket.assigns.puck_error
@@ -132,15 +149,21 @@ defmodule Puck.LiveViewTest do
 
   describe "subscribe/2" do
     test "reconnects to completed stream" do
-      client = Client.new({Mock, stream_chunks: ["hello", " ", "world"]})
+      client = Client.new({Mock, response: "x"})
+      stream_id = "completed-stream"
 
-      socket =
-        build_socket()
-        |> Puck.LiveView.assign_defaults(client)
-        |> Puck.LiveView.send_message("test")
-
-      stream_id = socket.assigns.puck_stream_id
-      assert_receive {:puck, {:done, _, _}}, 1000
+      :ok =
+        Puck.LiveView.Store.ETS.put_stream(
+          %{session_table: @table, registry: @registry},
+          stream_id,
+          %{
+            content: "hello world",
+            thinking: "",
+            markdown: "",
+            status: :done,
+            error: nil
+          }
+        )
 
       new_socket =
         build_socket()
@@ -165,25 +188,11 @@ defmodule Puck.LiveViewTest do
       client = Client.new({Mock, response: "x"})
       stream_1 = "stream-1"
       stream_2 = "stream-2"
-      {store_module, store_config} = current_store()
 
-      :ok =
-        store_module.put_stream(store_config, stream_1, %{
-          content: "",
-          thinking: "",
-          markdown: "",
-          status: :done,
-          error: nil
-        })
+      store = %{session_table: @table, registry: @registry}
 
-      :ok =
-        store_module.put_stream(store_config, stream_2, %{
-          content: "",
-          thinking: "",
-          markdown: "",
-          status: :done,
-          error: nil
-        })
+      :ok = Puck.LiveView.Store.ETS.put_stream(store, stream_1, %{status: :done, error: nil})
+      :ok = Puck.LiveView.Store.ETS.put_stream(store, stream_2, %{status: :done, error: nil})
 
       _socket =
         build_socket()
@@ -198,6 +207,33 @@ defmodule Puck.LiveViewTest do
       )
 
       refute_receive {:puck, {:chunk, :content, "stale"}}, 100
+    end
+
+    test "expired stream becomes not_found after retention window" do
+      client = Client.new({Mock, stream_chunks: ["ok"]})
+
+      socket =
+        build_socket()
+        |> Puck.LiveView.assign_defaults(client)
+        |> Puck.LiveView.send_message("test")
+
+      stream_id = socket.assigns.puck_stream_id
+      assert_receive {:puck, {:done, _, _}}, 1000
+
+      Process.sleep(20)
+
+      :ok =
+        Puck.LiveView.Store.ETS.sweep(
+          %{session_table: @table, registry: @registry},
+          retention_ms: 1
+        )
+
+      new_socket =
+        build_socket()
+        |> Puck.LiveView.assign_defaults(client)
+        |> Puck.LiveView.subscribe(stream_id)
+
+      assert new_socket.assigns.puck_status == :not_found
     end
   end
 

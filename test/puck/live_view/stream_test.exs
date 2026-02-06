@@ -6,12 +6,22 @@ defmodule Puck.LiveView.StreamTest do
   alias Puck.LiveView.Stream, as: StreamServer
 
   @pubsub Puck.LiveView.StreamTest.PubSub
+  @table Puck.LiveView.StreamTest.Store
   @registry Puck.LiveView.Registry
   @dynamic_supervisor Puck.LiveView.DynamicSupervisor
 
   setup do
     start_supervised!({Phoenix.PubSub, name: @pubsub})
-    start_supervised!({Puck.LiveView, pubsub: @pubsub, sweep_interval: :timer.minutes(10)})
+
+    start_supervised!(
+      {Puck.LiveView,
+       pubsub: @pubsub,
+       sweep_interval: :timer.minutes(10),
+       store: {Puck.LiveView.Store.ETS, session_table: @table}}
+    )
+
+    :ets.delete_all_objects(@table)
+    flush_mailbox()
     :ok
   end
 
@@ -23,7 +33,6 @@ defmodule Puck.LiveView.StreamTest do
 
     context = Keyword.get(opts, :context, Context.new())
     mode = Keyword.get(opts, :mode, :stream)
-    ttl = Keyword.get(opts, :ttl, 60_000)
     render_fn = Keyword.get(opts, :markdown)
     on_chunk = Keyword.get(opts, :on_chunk)
     on_done = Keyword.get(opts, :on_done)
@@ -38,7 +47,7 @@ defmodule Puck.LiveView.StreamTest do
          [
            stream_id: stream_id,
            pubsub: @pubsub,
-           store: current_store(),
+           store: {Puck.LiveView.Store.ETS, %{session_table: @table, registry: @registry}},
            registry: @registry,
            client: client,
            content: "test message",
@@ -48,7 +57,6 @@ defmodule Puck.LiveView.StreamTest do
            on_chunk: on_chunk,
            on_done: on_done,
            on_error: on_error,
-           ttl: ttl,
            stream_opts: []
          ]}
       )
@@ -58,11 +66,18 @@ defmodule Puck.LiveView.StreamTest do
 
   defp random_id, do: Base.encode64(:crypto.strong_rand_bytes(8), padding: false)
 
-  defp current_store, do: :persistent_term.get({Puck.LiveView, :store})
+  defp flush_mailbox do
+    receive do
+      _ -> flush_mailbox()
+    after
+      0 -> :ok
+    end
+  end
 
   defp fetch_stream!(stream_id) do
-    {store_module, store_config} = current_store()
-    {:ok, stream} = store_module.get_stream(store_config, stream_id)
+    {:ok, stream} =
+      Puck.LiveView.Store.ETS.get_stream(%{session_table: @table, registry: @registry}, stream_id)
+
     stream
   end
 

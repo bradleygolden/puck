@@ -12,7 +12,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     @impl true
     def init(opts) do
       interval = Keyword.get(opts, :sweep_interval, 30_000)
-      max_age = Keyword.get(opts, :max_age, 300_000)
+      retention_ms = Keyword.get(opts, :retention_ms, 300_000)
       store = Keyword.fetch!(opts, :store)
 
       schedule_sweep(interval)
@@ -20,7 +20,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       {:ok,
        %{
          interval: interval,
-         max_age: max_age,
+         retention_ms: retention_ms,
          store: store
        }}
     end
@@ -28,7 +28,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     @impl true
     def handle_info(:sweep, state) do
       {store_module, store_config} = state.store
-      _ = store_module.sweep(store_config, max_age: state.max_age)
+      _ = store_module.sweep(store_config, retention_ms: state.retention_ms)
       schedule_sweep(state.interval)
       {:noreply, state}
     end

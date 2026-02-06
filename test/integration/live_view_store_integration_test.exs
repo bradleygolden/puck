@@ -14,14 +14,11 @@ defmodule Puck.Integration.LiveViewStoreTest do
 
     def init(opts) do
       test_pid = Keyword.fetch!(opts, :test_pid)
-
       session_table = :"puck_integration_sessions_#{System.unique_integer([:positive])}"
-      chunk_table = :"puck_integration_chunks_#{System.unique_integer([:positive])}"
 
       with {:ok, ets_config} <-
              ETSStore.init(
                session_table: session_table,
-               chunk_table: chunk_table,
                registry: Keyword.get(opts, :registry)
              ) do
         {:ok, %{test_pid: test_pid, ets: ets_config}}
@@ -29,32 +26,12 @@ defmodule Puck.Integration.LiveViewStoreTest do
     end
 
     def put_stream(config, stream_id, attrs) do
+      :ok = ETSStore.put_stream(config.ets, stream_id, attrs)
       send(config.test_pid, {:store, :put_stream, stream_id, attrs})
-      ETSStore.put_stream(config.ets, stream_id, attrs)
-    end
-
-    def append_chunk(config, stream_id, seq, chunk, snapshot) do
-      send(config.test_pid, {:store, :append_chunk, stream_id, seq, chunk})
-      ETSStore.append_chunk(config.ets, stream_id, seq, chunk, snapshot)
-    end
-
-    def mark_done(config, stream_id, response, context, snapshot) do
-      send(config.test_pid, {:store, :mark_done, stream_id, response, context})
-      ETSStore.mark_done(config.ets, stream_id, response, context, snapshot)
-    end
-
-    def mark_error(config, stream_id, reason, snapshot) do
-      send(config.test_pid, {:store, :mark_error, stream_id, reason})
-      ETSStore.mark_error(config.ets, stream_id, reason, snapshot)
-    end
-
-    def mark_cancelled(config, stream_id, snapshot) do
-      send(config.test_pid, {:store, :mark_cancelled, stream_id})
-      ETSStore.mark_cancelled(config.ets, stream_id, snapshot)
+      :ok
     end
 
     def get_stream(config, stream_id), do: ETSStore.get_stream(config.ets, stream_id)
-    def list_chunks(config, stream_id), do: ETSStore.list_chunks(config.ets, stream_id)
     def delete_stream(config, stream_id), do: ETSStore.delete_stream(config.ets, stream_id)
     def sweep(config, opts), do: ETSStore.sweep(config.ets, opts)
   end
@@ -74,6 +51,29 @@ defmodule Puck.Integration.LiveViewStoreTest do
 
   defp build_socket, do: %Phoenix.LiveView.Socket{}
 
+  defp await_reconnect_status(client, stream_id, expected, timeout_ms \\ 1000) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_await_reconnect_status(client, stream_id, expected, deadline)
+  end
+
+  defp do_await_reconnect_status(client, stream_id, expected, deadline) do
+    socket =
+      build_socket()
+      |> Puck.LiveView.assign_defaults(client)
+      |> Puck.LiveView.subscribe(stream_id)
+
+    if socket.assigns.puck_status == expected do
+      socket
+    else
+      if System.monotonic_time(:millisecond) >= deadline do
+        flunk("stream #{stream_id} did not reach status #{inspect(expected)}")
+      else
+        Process.sleep(10)
+        do_await_reconnect_status(client, stream_id, expected, deadline)
+      end
+    end
+  end
+
   test "uses configured store for stream lifecycle and reconnect state" do
     client = Client.new({Mock, stream_chunks: ["hello", " ", "world"]})
 
@@ -84,16 +84,12 @@ defmodule Puck.Integration.LiveViewStoreTest do
 
     stream_id = socket.assigns.puck_stream_id
     assert_receive {:store, :put_stream, ^stream_id, _attrs}, 1000
-    assert_receive {:store, :append_chunk, ^stream_id, 1, _chunk}, 1000
-    assert_receive {:store, :append_chunk, ^stream_id, 2, _chunk}, 1000
-    assert_receive {:store, :append_chunk, ^stream_id, 3, _chunk}, 1000
-    assert_receive {:store, :mark_done, ^stream_id, _response, %Context{}}, 1000
+    assert_receive {:store, :put_stream, ^stream_id, %{status: :streaming}}, 1000
+    assert_receive {:store, :put_stream, ^stream_id, %{status: :streaming}}, 1000
+    assert_receive {:store, :put_stream, ^stream_id, %{status: :done, context: %Context{}}}, 1000
     assert_receive {:puck, {:done, _response, _context}}, 1000
 
-    reconnected =
-      build_socket()
-      |> Puck.LiveView.assign_defaults(client)
-      |> Puck.LiveView.subscribe(stream_id)
+    reconnected = await_reconnect_status(client, stream_id, :done)
 
     assert reconnected.assigns.puck_status == :done
     assert reconnected.assigns.puck_content == "hello world"
@@ -111,7 +107,7 @@ defmodule Puck.Integration.LiveViewStoreTest do
     Process.sleep(50)
     _cancelled_socket = Puck.LiveView.cancel(socket)
 
-    assert_receive {:store, :mark_cancelled, ^stream_id}, 1000
+    assert_receive {:store, :put_stream, ^stream_id, %{status: :cancelled}}, 1000
     assert_receive {:puck, {:cancelled, _}}, 1000
   end
 end
