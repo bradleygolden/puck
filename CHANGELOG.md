@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Claude Agent SDK backend now forwards the `:tools` config option, enabling tool-free chatbots via `tools: []`
+
 ## [0.2.10] - 2026-02-05
 
 ### Fixed

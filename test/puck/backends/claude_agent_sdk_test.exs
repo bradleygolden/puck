@@ -96,6 +96,30 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
       {:ok, config: config}
     end
 
+    describe "tools config forwarding" do
+      test "forwards tools from config to SDK options", %{config: config} do
+        config = Map.put(config, :tools, [])
+
+        expect(ClaudeAgentSDK, :query, fn _prompt, opts ->
+          assert opts.tools == []
+          sdk_messages("s1")
+        end)
+
+        messages = [Message.new(:user, "hello")]
+        {:ok, _response} = Backend.call(config, messages, [])
+      end
+
+      test "tools defaults to nil when not in config", %{config: config} do
+        expect(ClaudeAgentSDK, :query, fn _prompt, opts ->
+          assert opts.tools == nil
+          sdk_messages("s1")
+        end)
+
+        messages = [Message.new(:user, "hello")]
+        {:ok, _response} = Backend.call(config, messages, [])
+      end
+    end
+
     describe "call/3 session resume" do
       test "starts new session when no session_id in messages", %{config: config} do
         expect(ClaudeAgentSDK, :query, fn "hello", _opts ->
