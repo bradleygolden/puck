@@ -122,8 +122,7 @@ def deps do
     {:telemetry, "~> 1.2"},        # Observability
     {:zoi, "~> 0.7"},              # Schema validation for structured outputs
     {:lua, "~> 0.4.0"},            # Lua sandbox for code execution
-    {:phoenix_pubsub, "~> 2.1"},   # LiveView streaming integration
-    {:phoenix_live_view, "~> 1.0"} # LiveView streaming integration
+    {:phoenix_pubsub, "~> 2.1"}    # LiveView streaming integration
   ]
 end
 ```
@@ -708,26 +707,17 @@ image_bytes = File.read!("photo.png")
 
 ## LiveView Integration
 
-Stream LLM responses into Phoenix LiveView with durable state. Stream data is persisted
-through a configurable snapshot store (`Puck.LiveView.Store`). Core ships with ETS only.
-The store contract in core is intentionally small: put snapshot, get snapshot, delete, sweep.
+Stream LLM responses into Phoenix LiveView. Two functions: `start_stream/4` to begin,
+`cancel/1` to stop. You write your own `handle_info` clauses.
 
-Requires `{:phoenix_pubsub, "~> 2.1"}` and `{:phoenix_live_view, "~> 1.0"}`.
+Requires `{:phoenix_pubsub, "~> 2.1"}`.
 
 ### Setup
 
 ```elixir
 # application.ex
 children = [
-  {Puck.LiveView,
-   pubsub: MyApp.PubSub,
-   retention_ms: :timer.minutes(5),
-   sweep_interval: :timer.seconds(30)}
-]
-
-# with a custom store adapter
-children = [
-  {Puck.LiveView, pubsub: MyApp.PubSub, store: MyApp.PuckStore}
+  Puck.LiveView
 ]
 ```
 
@@ -738,71 +728,55 @@ defmodule MyAppWeb.ChatLive do
   use MyAppWeb, :live_view
 
   def mount(_params, _session, socket) do
-    {:ok, Puck.LiveView.assign_defaults(socket, build_client())}
+    {:ok, assign(socket, content: "", status: :idle, stream_id: nil)}
   end
 
   def handle_event("send", %{"message" => message}, socket) do
-    {:noreply, Puck.LiveView.send_message(socket, message,
-      markdown: &MDEx.to_html!/1,
-      on_done: fn _response, state ->
-        MyApp.Messages.save(state.stream_id, state.content)
-      end
-    )}
-  end
-
-  def handle_event("cancel", _params, socket) do
-    {:noreply, Puck.LiveView.cancel(socket)}
-  end
-
-  def handle_info({:puck, event}, socket) do
-    {:noreply, Puck.LiveView.handle_event(event, socket)}
-  end
-
-  defp build_client do
-    Puck.Client.new(
+    client = Puck.Client.new(
       {Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
       system_prompt: "You are a helpful assistant."
     )
+
+    {:ok, stream_id} =
+      Puck.LiveView.start_stream(client, message, Puck.Context.new(),
+        pubsub: MyApp.PubSub
+      )
+
+    {:noreply, assign(socket, stream_id: stream_id, content: "", status: :streaming)}
+  end
+
+  def handle_event("cancel", _params, socket) do
+    Puck.LiveView.cancel(socket.assigns.stream_id)
+    {:noreply, socket}
+  end
+
+  def handle_info({:puck_stream, _id, {:chunk, text}}, socket) do
+    {:noreply, assign(socket, content: socket.assigns.content <> text)}
+  end
+
+  def handle_info({:puck_stream, _id, {:done, _response, _context}}, socket) do
+    {:noreply, assign(socket, status: :done)}
+  end
+
+  def handle_info({:puck_stream, _id, {:error, _reason}}, socket) do
+    {:noreply, assign(socket, status: :error)}
+  end
+
+  def handle_info({:puck_stream, _id, {:cancelled, _content}}, socket) do
+    {:noreply, assign(socket, status: :cancelled)}
   end
 end
 ```
 
-Use `mode: :call` for a non-streaming request that still persists to the store:
+Messages arrive as `{:puck_stream, stream_id, event}` on the topic `"puck:stream:<stream_id>"`:
 
-```elixir
-Puck.LiveView.send_message(socket, message, mode: :call)
-```
-
-### Reconnecting to a Stream
-
-Store the `puck_stream_id` (e.g. in the URL) and call `subscribe/2` on mount:
-
-```elixir
-def mount(%{"stream_id" => stream_id}, _session, socket) do
-  socket =
-    socket
-    |> Puck.LiveView.assign_defaults(build_client())
-    |> Puck.LiveView.subscribe(stream_id)
-
-  {:ok, socket}
-end
-```
-
-This reads the stream's current snapshot from the configured store — works even if the stream's
-GenServer has crashed. If the entry has expired, `puck_status` is set to `:not_found`.
-
-### What Core Includes
-
-- Stable `Puck.LiveView` API (`assign_defaults/3`, `send_message/3`, `subscribe/2`, `handle_event/2`, `streaming?/1`, `cancel/1`)
-- PubSub streaming for content/thinking/markdown/done/error/cancelled events
-- Snapshot persistence + reconnect
-- One retention model (`retention_ms`) enforced by sweeper
-
-### What Core Leaves To Adapters
-
-- Database-specific schema choices
-- Audit/event history storage
-- Multi-node replication details
+| Event | Description |
+|-------|-------------|
+| `{:chunk, text}` | Individual content chunk (append to your accumulator) |
+| `{:thinking, text}` | Individual thinking chunk |
+| `{:done, response, context}` | Stream completed with `Puck.Response` and updated `Puck.Context` |
+| `{:error, reason}` | Stream failed |
+| `{:cancelled, content}` | Cancelled with accumulated content so far |
 
 ## Acknowledgments
 
