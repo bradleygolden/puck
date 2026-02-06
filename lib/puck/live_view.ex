@@ -77,6 +77,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     use Supervisor
 
     alias Puck.Context
+    alias Puck.LiveView.Config
 
     @registry Puck.LiveView.Registry
     @dynamic_supervisor Puck.LiveView.DynamicSupervisor
@@ -305,7 +306,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     end
 
     defp config do
-      case Puck.LiveView.Config.get() do
+      case Config.get() do
         {:ok, config} -> config
         {:error, :not_started} -> raise "Puck.LiveView supervisor is not started"
       end

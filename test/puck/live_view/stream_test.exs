@@ -3,6 +3,7 @@ defmodule Puck.LiveView.StreamTest do
 
   alias Puck.Backends.Mock
   alias Puck.{Client, Context}
+  alias Puck.LiveView.Store.ETS, as: ETSStore
   alias Puck.LiveView.Stream, as: StreamServer
 
   @pubsub Puck.LiveView.StreamTest.PubSub
@@ -76,7 +77,7 @@ defmodule Puck.LiveView.StreamTest do
 
   defp fetch_stream!(stream_id) do
     {:ok, stream} =
-      Puck.LiveView.Store.ETS.get_stream(%{session_table: @table, registry: @registry}, stream_id)
+      ETSStore.get_stream(%{session_table: @table, registry: @registry}, stream_id)
 
     stream
   end

@@ -3,6 +3,7 @@ defmodule Puck.LiveViewTest do
 
   alias Puck.Backends.Mock
   alias Puck.{Client, Context, Response}
+  alias Puck.LiveView.Store.ETS, as: ETSStore
 
   @pubsub Puck.LiveViewTest.PubSub
   @table Puck.LiveViewTest.Store
@@ -153,17 +154,13 @@ defmodule Puck.LiveViewTest do
       stream_id = "completed-stream"
 
       :ok =
-        Puck.LiveView.Store.ETS.put_stream(
-          %{session_table: @table, registry: @registry},
-          stream_id,
-          %{
-            content: "hello world",
-            thinking: "",
-            markdown: "",
-            status: :done,
-            error: nil
-          }
-        )
+        ETSStore.put_stream(%{session_table: @table, registry: @registry}, stream_id, %{
+          content: "hello world",
+          thinking: "",
+          markdown: "",
+          status: :done,
+          error: nil
+        })
 
       new_socket =
         build_socket()
@@ -191,8 +188,8 @@ defmodule Puck.LiveViewTest do
 
       store = %{session_table: @table, registry: @registry}
 
-      :ok = Puck.LiveView.Store.ETS.put_stream(store, stream_1, %{status: :done, error: nil})
-      :ok = Puck.LiveView.Store.ETS.put_stream(store, stream_2, %{status: :done, error: nil})
+      :ok = ETSStore.put_stream(store, stream_1, %{status: :done, error: nil})
+      :ok = ETSStore.put_stream(store, stream_2, %{status: :done, error: nil})
 
       _socket =
         build_socket()
@@ -222,11 +219,7 @@ defmodule Puck.LiveViewTest do
 
       Process.sleep(20)
 
-      :ok =
-        Puck.LiveView.Store.ETS.sweep(
-          %{session_table: @table, registry: @registry},
-          retention_ms: 1
-        )
+      :ok = ETSStore.sweep(%{session_table: @table, registry: @registry}, retention_ms: 1)
 
       new_socket =
         build_socket()
