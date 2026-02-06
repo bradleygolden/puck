@@ -220,6 +220,27 @@ defmodule Puck.LiveViewTest do
       :ets.new(@table, [:named_table, :public, :set, write_concurrency: true])
     end
 
+    test "reconnects to completed call mode stream" do
+      client = Client.new({Mock, response: "call result"})
+
+      socket =
+        build_socket()
+        |> Puck.LiveView.assign_defaults(client)
+        |> Puck.LiveView.send_message("test", mode: :call)
+
+      stream_id = socket.assigns.puck_stream_id
+      assert_receive {:puck, {:done, response, _}}, 1000
+      assert response.content == "call result"
+
+      new_socket =
+        build_socket()
+        |> Puck.LiveView.assign_defaults(client)
+        |> Puck.LiveView.subscribe(stream_id)
+
+      assert new_socket.assigns.puck_status == :done
+      assert new_socket.assigns.puck_content == "call result"
+    end
+
     test "expired stream becomes not_found after retention window" do
       client = Client.new({Mock, stream_chunks: ["ok"]})
 
