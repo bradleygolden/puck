@@ -37,19 +37,20 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
             {:noreply, socket}
           end
 
-          def handle_info({:puck_stream, _id, {:chunk, text}}, socket) do
-            {:noreply, assign(socket, content: socket.assigns.content <> text)}
+          def handle_info({:puck_stream, _id, {:chunk, chunk}}, socket) do
+            {:noreply, assign(socket, content: socket.assigns.content <> chunk.content)}
           end
 
-          def handle_info({:puck_stream, _id, {:done, response, context}}, socket) do
+          def handle_info({:puck_stream, id, {:done, _response, _context}}, socket) do
+            Puck.LiveView.unsubscribe(id, pubsub: MyApp.PubSub)
             {:noreply, assign(socket, status: :done)}
           end
 
-          def handle_info({:puck_stream, _id, {:error, reason}}, socket) do
+          def handle_info({:puck_stream, _id, {:error, _reason}}, socket) do
             {:noreply, assign(socket, status: :error)}
           end
 
-          def handle_info({:puck_stream, _id, {:cancelled, content}}, socket) do
+          def handle_info({:puck_stream, _id, {:cancelled, _content}}, socket) do
             {:noreply, assign(socket, status: :cancelled)}
           end
 
@@ -68,11 +69,15 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     | Event | Description |
     |-------|-------------|
-    | `{:chunk, text}` | Individual content chunk (append to your accumulator) |
-    | `{:thinking, text}` | Individual thinking chunk |
+    | `{:chunk, chunk}` | Content chunk map (use `chunk.content` for text) |
+    | `{:thinking, chunk}` | Thinking chunk map |
     | `{:done, response, context}` | Stream completed with `Puck.Response` and updated `Puck.Context` |
     | `{:error, reason}` | Stream failed |
     | `{:cancelled, content}` | Cancelled with accumulated content so far |
+
+    Chunk maps are passed through from the backend. Every chunk has at least
+    `:type` and `:content` keys, but may include additional metadata like usage
+    stats or model info depending on the backend.
 
     """
 
@@ -114,6 +119,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
       - `:pubsub` - (required) PubSub module, e.g. `MyApp.PubSub`
       - `:stream_id` - Custom stream ID (auto-generated if omitted)
+      - `:timeout` - Auto-cancel after this many milliseconds
       - `:name` - Supervisor name to use (default: `Puck.LiveView`)
 
     Remaining options are passed through to `Puck.stream/4`.
@@ -123,6 +129,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       {pubsub, opts} = Keyword.pop!(opts, :pubsub)
       {stream_id, opts} = Keyword.pop_lazy(opts, :stream_id, &generate_id/0)
       {name, opts} = Keyword.pop(opts, :name, __MODULE__)
+      {timeout, opts} = Keyword.pop(opts, :timeout)
 
       registry = Module.concat(name, Registry)
       task_supervisor = Module.concat(name, TaskSupervisor)
@@ -141,6 +148,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
                 client: client,
                 prompt: prompt,
                 context: context,
+                timeout: timeout,
                 stream_opts: opts
               ]}
            ) do
@@ -163,6 +171,18 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     def cancel(stream_id, name \\ __MODULE__) do
       registry = Module.concat(name, Registry)
       Puck.LiveView.Stream.cancel(registry, stream_id)
+    end
+
+    @doc """
+    Unsubscribes the caller from a stream's PubSub topic.
+
+    Call this in your `{:done, ...}` or `{:error, ...}` handler to stop
+    receiving messages after a stream completes.
+
+    """
+    def unsubscribe(stream_id, opts) do
+      pubsub = Keyword.fetch!(opts, :pubsub)
+      Phoenix.PubSub.unsubscribe(pubsub, topic(stream_id))
     end
 
     @doc """

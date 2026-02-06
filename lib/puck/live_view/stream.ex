@@ -5,6 +5,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     use GenServer
 
     alias Puck.{Context, Response}
+    alias Puck.Runtime.Telemetry
 
     def start_link(opts) do
       stream_id = Keyword.fetch!(opts, :stream_id)
@@ -28,6 +29,10 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       prompt = Keyword.fetch!(opts, :prompt)
       context = Keyword.fetch!(opts, :context)
       stream_opts = Keyword.get(opts, :stream_opts, [])
+      timeout = Keyword.get(opts, :timeout)
+
+      start_time =
+        Telemetry.start([:live_view, :stream], %{stream_id: stream_id, client: client})
 
       me = self()
 
@@ -36,6 +41,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
           consume(me, client, prompt, context, stream_opts)
         end)
 
+      if timeout, do: Process.send_after(self(), :timeout, timeout)
+
       state = %{
         stream_id: stream_id,
         pubsub: pubsub,
@@ -43,7 +50,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         context: context,
         task_ref: task.ref,
         task_pid: task.pid,
-        cancelled: false
+        cancelled: false,
+        start_time: start_time
       }
 
       {:ok, state}
@@ -74,24 +82,50 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       final_context =
         Context.add_message(result_context, :assistant, response.content, response.metadata)
 
+      Telemetry.stop([:live_view, :stream], state.start_time, %{
+        stream_id: state.stream_id,
+        response: response
+      })
+
       broadcast(state, {:done, response, final_context})
       {:stop, :normal, state}
     end
 
     def handle_info({ref, {:error, reason}}, %{task_ref: ref} = state) do
       Process.demonitor(ref, [:flush])
+
+      Telemetry.event([:live_view, :stream, :error], %{}, %{
+        stream_id: state.stream_id,
+        reason: reason
+      })
+
       broadcast(state, {:error, reason})
       {:stop, :normal, state}
     end
 
     def handle_info({:DOWN, ref, :process, _pid, reason}, %{task_ref: ref} = state) do
       if state.cancelled do
+        Telemetry.event([:live_view, :stream, :cancel], %{}, %{
+          stream_id: state.stream_id,
+          content: state.content
+        })
+
         broadcast(state, {:cancelled, state.content})
         {:stop, :normal, state}
       else
+        Telemetry.event([:live_view, :stream, :error], %{}, %{
+          stream_id: state.stream_id,
+          reason: reason
+        })
+
         broadcast(state, {:error, reason})
         {:stop, :normal, state}
       end
+    end
+
+    def handle_info(:timeout, state) do
+      if state.task_pid, do: Process.exit(state.task_pid, :kill)
+      {:noreply, %{state | cancelled: true}}
     end
 
     defp consume(parent, client, prompt, context, opts) do
@@ -114,9 +148,9 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     defp accumulate_chunk(state, _chunk), do: state
 
-    defp chunk_event(%{type: :content, content: text}), do: {:chunk, to_string(text)}
-    defp chunk_event(%{type: :thinking, content: text}), do: {:thinking, to_string(text)}
-    defp chunk_event(chunk), do: {:chunk, inspect(chunk)}
+    defp chunk_event(%{type: :content} = chunk), do: {:chunk, chunk}
+    defp chunk_event(%{type: :thinking} = chunk), do: {:thinking, chunk}
+    defp chunk_event(chunk), do: {:chunk, chunk}
 
     defp broadcast(state, event) do
       Phoenix.PubSub.broadcast(

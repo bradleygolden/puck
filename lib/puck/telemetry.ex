@@ -178,6 +178,62 @@ if Code.ensure_loaded?(:telemetry) do
       * `:strategy` - The compaction strategy module.
       * `:reason` - The error reason.
 
+    ### LiveView Stream Start
+
+    `[:puck, :live_view, :stream, :start]` — Emitted when a LiveView stream
+    begins.
+
+    #### Measurements
+
+      * `:system_time` - The system time in native units.
+
+    #### Metadata
+
+      * `:stream_id` - The stream identifier.
+      * `:client` - The `Puck.Client` struct.
+
+    ### LiveView Stream Stop
+
+    `[:puck, :live_view, :stream, :stop]` — Emitted when a LiveView stream
+    completes.
+
+    #### Measurements
+
+      * `:duration` - Time taken in native units.
+
+    #### Metadata
+
+      * `:stream_id` - The stream identifier.
+      * `:response` - The `Puck.Response` struct.
+
+    ### LiveView Stream Error
+
+    `[:puck, :live_view, :stream, :error]` — Emitted when a LiveView stream
+    fails.
+
+    #### Measurements
+
+    No measurements.
+
+    #### Metadata
+
+      * `:stream_id` - The stream identifier.
+      * `:reason` - The error reason.
+
+    ### LiveView Stream Cancel
+
+    `[:puck, :live_view, :stream, :cancel]` — Emitted when a LiveView stream
+    is cancelled.
+
+    #### Measurements
+
+    No measurements.
+
+    #### Metadata
+
+      * `:stream_id` - The stream identifier.
+      * `:content` - The accumulated content at cancellation.
+
     ## Attaching Handlers
 
         :telemetry.attach_many("my-handler", Puck.Telemetry.event_names(), &handler/4, nil)
@@ -210,7 +266,11 @@ if Code.ensure_loaded?(:telemetry) do
         [:puck, :backend, :response],
         [:puck, :compaction, :start],
         [:puck, :compaction, :stop],
-        [:puck, :compaction, :error]
+        [:puck, :compaction, :error],
+        [:puck, :live_view, :stream, :start],
+        [:puck, :live_view, :stream, :stop],
+        [:puck, :live_view, :stream, :error],
+        [:puck, :live_view, :stream, :cancel]
       ]
     end
 

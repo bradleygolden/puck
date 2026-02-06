@@ -30,10 +30,27 @@ defmodule Puck.LiveViewTest do
 
       assert is_binary(stream_id)
 
-      assert_receive {:puck_stream, ^stream_id, {:chunk, "hello"}}, 1000
-      assert_receive {:puck_stream, ^stream_id, {:chunk, " "}}, 1000
-      assert_receive {:puck_stream, ^stream_id, {:chunk, "world"}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:chunk, %{type: :content, content: "hello"}}},
+                     1000
+
+      assert_receive {:puck_stream, ^stream_id, {:chunk, %{type: :content, content: " "}}}, 1000
+
+      assert_receive {:puck_stream, ^stream_id, {:chunk, %{type: :content, content: "world"}}},
+                     1000
+
       assert_receive {:puck_stream, ^stream_id, {:done, %Response{}, %Context{}}}, 1000
+    end
+
+    test "chunks include backend metadata" do
+      client = Client.new({Mock, stream_chunks: ["hi"]})
+
+      {:ok, id} = Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      assert_receive {:puck_stream, ^id, {:chunk, chunk}}, 1000
+      assert chunk.type == :content
+      assert chunk.content == "hi"
+      assert chunk.metadata == %{partial: true, backend: :mock}
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
     end
 
     test "accepts custom :stream_id" do
@@ -99,6 +116,18 @@ defmodule Puck.LiveViewTest do
         Puck.LiveView.start_stream(client, "test", Context.new(), [])
       end
     end
+
+    test "timeout auto-cancels the stream" do
+      client = Client.new({Mock, response: "slow", delay: 2000})
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(),
+          pubsub: @pubsub,
+          timeout: 50
+        )
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+    end
   end
 
   describe "cancel/1" do
@@ -119,6 +148,20 @@ defmodule Puck.LiveViewTest do
 
     test "no-op when stream does not exist" do
       assert :ok = Puck.LiveView.cancel("nonexistent")
+    end
+  end
+
+  describe "unsubscribe/2" do
+    test "stops receiving messages after unsubscribe" do
+      client = Client.new({Mock, stream_chunks: ["a"]})
+
+      {:ok, id} = Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+
+      Puck.LiveView.unsubscribe(id, pubsub: @pubsub)
+
+      Phoenix.PubSub.broadcast(@pubsub, Puck.LiveView.topic(id), {:puck_stream, id, :test})
+      refute_receive {:puck_stream, ^id, :test}, 100
     end
   end
 

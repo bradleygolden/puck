@@ -22,6 +22,7 @@ defmodule Puck.LiveView.StreamTest do
 
     context = Keyword.get(opts, :context, Context.new())
     stream_opts = Keyword.get(opts, :stream_opts, [])
+    timeout = Keyword.get(opts, :timeout)
 
     Phoenix.PubSub.subscribe(@pubsub, "puck:stream:#{stream_id}")
 
@@ -37,6 +38,7 @@ defmodule Puck.LiveView.StreamTest do
            client: client,
            prompt: "test message",
            context: context,
+           timeout: timeout,
            stream_opts: stream_opts
          ]}
       )
@@ -70,12 +72,20 @@ defmodule Puck.LiveView.StreamTest do
   end
 
   describe "streaming" do
-    test "broadcasts individual chunk text" do
+    test "broadcasts full chunk maps" do
       %{stream_id: id} = start_stream()
 
-      assert_receive {:puck_stream, ^id, {:chunk, "hello"}}, 1000
-      assert_receive {:puck_stream, ^id, {:chunk, " "}}, 1000
-      assert_receive {:puck_stream, ^id, {:chunk, "world"}}, 1000
+      assert_receive {:puck_stream, ^id, {:chunk, %{type: :content, content: "hello"}}}, 1000
+      assert_receive {:puck_stream, ^id, {:chunk, %{type: :content, content: " "}}}, 1000
+      assert_receive {:puck_stream, ^id, {:chunk, %{type: :content, content: "world"}}}, 1000
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+    end
+
+    test "chunk maps preserve backend metadata" do
+      %{stream_id: id} = start_stream()
+
+      assert_receive {:puck_stream, ^id, {:chunk, chunk}}, 1000
+      assert Map.has_key?(chunk, :metadata)
       assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
     end
 
@@ -98,15 +108,19 @@ defmodule Puck.LiveView.StreamTest do
   end
 
   describe "thinking chunks" do
-    test "broadcasts thinking chunks separately" do
+    test "broadcasts thinking chunks with full map" do
       client = Client.new({Mock, response: "slow", delay: 300})
       %{stream_id: id, pid: pid} = start_stream(client: client)
 
       send(pid, {:stream_chunk, %{type: :thinking, content: "hmm"}})
       send(pid, {:stream_chunk, %{type: :thinking, content: " let me think"}})
 
-      assert_receive {:puck_stream, ^id, {:thinking, "hmm"}}, 1000
-      assert_receive {:puck_stream, ^id, {:thinking, " let me think"}}, 1000
+      assert_receive {:puck_stream, ^id, {:thinking, %{type: :thinking, content: "hmm"}}}, 1000
+
+      assert_receive {:puck_stream, ^id,
+                      {:thinking, %{type: :thinking, content: " let me think"}}},
+                     1000
+
       assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
     end
   end
@@ -144,6 +158,21 @@ defmodule Puck.LiveView.StreamTest do
 
     test "cancel on nonexistent stream is a no-op" do
       assert :ok = StreamServer.cancel(Puck.LiveView.Registry, "nonexistent")
+    end
+  end
+
+  describe "timeout" do
+    test "auto-cancels after timeout" do
+      client = Client.new({Mock, response: "slow", delay: 2000})
+      %{stream_id: id} = start_stream(client: client, timeout: 50)
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+    end
+
+    test "no timeout when option is nil" do
+      %{stream_id: id} = start_stream(timeout: nil)
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
     end
   end
 

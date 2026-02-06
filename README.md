@@ -750,11 +750,12 @@ defmodule MyAppWeb.ChatLive do
     {:noreply, socket}
   end
 
-  def handle_info({:puck_stream, _id, {:chunk, text}}, socket) do
-    {:noreply, assign(socket, content: socket.assigns.content <> text)}
+  def handle_info({:puck_stream, _id, {:chunk, chunk}}, socket) do
+    {:noreply, assign(socket, content: socket.assigns.content <> chunk.content)}
   end
 
-  def handle_info({:puck_stream, _id, {:done, _response, _context}}, socket) do
+  def handle_info({:puck_stream, id, {:done, _response, _context}}, socket) do
+    Puck.LiveView.unsubscribe(id, pubsub: MyApp.PubSub)
     {:noreply, assign(socket, status: :done)}
   end
 
@@ -772,8 +773,8 @@ Messages arrive as `{:puck_stream, stream_id, event}` on the topic `"puck:stream
 
 | Event | Description |
 |-------|-------------|
-| `{:chunk, text}` | Individual content chunk (append to your accumulator) |
-| `{:thinking, text}` | Individual thinking chunk |
+| `{:chunk, chunk}` | Content chunk map (use `chunk.content` for text) |
+| `{:thinking, chunk}` | Thinking chunk map |
 | `{:done, response, context}` | Stream completed with `Puck.Response` and updated `Puck.Context` |
 | `{:error, reason}` | Stream failed |
 | `{:cancelled, content}` | Cancelled with accumulated content so far |
