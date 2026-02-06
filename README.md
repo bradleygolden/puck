@@ -750,7 +750,7 @@ defmodule MyAppWeb.ChatLive do
     {:noreply, socket}
   end
 
-  def handle_info({:puck_stream, _id, {:chunk, chunk}}, socket) do
+  def handle_info({:puck_stream, _id, {:content, chunk}}, socket) do
     {:noreply, assign(socket, content: socket.assigns.content <> chunk.content)}
   end
 
@@ -773,7 +773,7 @@ Messages arrive as `{:puck_stream, stream_id, event}` on the topic `"puck:stream
 
 | Event | Description |
 |-------|-------------|
-| `{:chunk, chunk}` | Content chunk map (use `chunk.content` for text) |
+| `{:content, chunk}` | Content chunk map (use `chunk.content` for text) |
 | `{:thinking, chunk}` | Thinking chunk map |
 | `{:done, response, context}` | Stream completed with `Puck.Response` and updated `Puck.Context` |
 | `{:error, reason}` | Stream failed |

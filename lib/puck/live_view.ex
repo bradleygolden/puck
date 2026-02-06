@@ -37,7 +37,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
             {:noreply, socket}
           end
 
-          def handle_info({:puck_stream, _id, {:chunk, chunk}}, socket) do
+          def handle_info({:puck_stream, _id, {:content, chunk}}, socket) do
             {:noreply, assign(socket, content: socket.assigns.content <> chunk.content)}
           end
 
@@ -69,15 +69,17 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     | Event | Description |
     |-------|-------------|
-    | `{:chunk, chunk}` | Content chunk map (use `chunk.content` for text) |
+    | `{:content, chunk}` | Content chunk map (use `chunk.content` for text) |
     | `{:thinking, chunk}` | Thinking chunk map |
     | `{:done, response, context}` | Stream completed with `Puck.Response` and updated `Puck.Context` |
     | `{:error, reason}` | Stream failed |
     | `{:cancelled, content}` | Cancelled with accumulated content so far |
 
-    Chunk maps are passed through from the backend. Every chunk has at least
-    `:type` and `:content` keys, but may include additional metadata like usage
-    stats or model info depending on the backend.
+    Chunk events use the chunk's own `:type` as the PubSub tag. Content chunks
+    arrive as `{:content, chunk}`, thinking as `{:thinking, chunk}`, and any
+    other backend-specific types (e.g. `:tool_use`) use their own tag. Chunk
+    maps are passed through unmodified and may include metadata like usage stats
+    or model info depending on the backend.
 
     """
 

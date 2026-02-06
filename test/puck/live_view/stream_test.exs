@@ -72,19 +72,19 @@ defmodule Puck.LiveView.StreamTest do
   end
 
   describe "streaming" do
-    test "broadcasts full chunk maps" do
+    test "broadcasts chunks tagged by their type" do
       %{stream_id: id} = start_stream()
 
-      assert_receive {:puck_stream, ^id, {:chunk, %{type: :content, content: "hello"}}}, 1000
-      assert_receive {:puck_stream, ^id, {:chunk, %{type: :content, content: " "}}}, 1000
-      assert_receive {:puck_stream, ^id, {:chunk, %{type: :content, content: "world"}}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, %{type: :content, content: "hello"}}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, %{type: :content, content: " "}}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, %{type: :content, content: "world"}}}, 1000
       assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
     end
 
     test "chunk maps preserve backend metadata" do
       %{stream_id: id} = start_stream()
 
-      assert_receive {:puck_stream, ^id, {:chunk, chunk}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, chunk}}, 1000
       assert Map.has_key?(chunk, :metadata)
       assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
     end
@@ -98,6 +98,13 @@ defmodule Puck.LiveView.StreamTest do
       assert response.finish_reason == :stop
     end
 
+    test "done Response includes metadata from last chunk" do
+      %{stream_id: id} = start_stream()
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert response.metadata == %{partial: true, backend: :mock}
+    end
+
     test "done includes updated Context with assistant message" do
       %{stream_id: id} = start_stream()
 
@@ -108,7 +115,7 @@ defmodule Puck.LiveView.StreamTest do
   end
 
   describe "thinking chunks" do
-    test "broadcasts thinking chunks with full map" do
+    test "broadcasts thinking chunks with their type tag" do
       client = Client.new({Mock, response: "slow", delay: 300})
       %{stream_id: id, pid: pid} = start_stream(client: client)
 
@@ -121,6 +128,31 @@ defmodule Puck.LiveView.StreamTest do
                       {:thinking, %{type: :thinking, content: " let me think"}}},
                      1000
 
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+    end
+  end
+
+  describe "unknown chunk types" do
+    test "broadcasts with the chunk's own type tag" do
+      client = Client.new({Mock, response: "slow", delay: 300})
+      %{stream_id: id, pid: pid} = start_stream(client: client)
+
+      send(pid, {:stream_chunk, %{type: :tool_use, content: "calling search"}})
+
+      assert_receive {:puck_stream, ^id,
+                      {:tool_use, %{type: :tool_use, content: "calling search"}}},
+                     1000
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+    end
+
+    test "chunks without a type field broadcast as :unknown" do
+      client = Client.new({Mock, response: "slow", delay: 300})
+      %{stream_id: id, pid: pid} = start_stream(client: client)
+
+      send(pid, {:stream_chunk, %{data: "mystery"}})
+
+      assert_receive {:puck_stream, ^id, {:unknown, %{data: "mystery"}}}, 1000
       assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
     end
   end

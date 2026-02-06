@@ -22,7 +22,7 @@ defmodule Puck.LiveViewTest do
   end
 
   describe "start_stream/4" do
-    test "returns {:ok, stream_id} and delivers chunk + done messages" do
+    test "returns {:ok, stream_id} and delivers content + done messages" do
       client = Client.new({Mock, stream_chunks: ["hello", " ", "world"]})
 
       {:ok, stream_id} =
@@ -30,14 +30,9 @@ defmodule Puck.LiveViewTest do
 
       assert is_binary(stream_id)
 
-      assert_receive {:puck_stream, ^stream_id, {:chunk, %{type: :content, content: "hello"}}},
-                     1000
-
-      assert_receive {:puck_stream, ^stream_id, {:chunk, %{type: :content, content: " "}}}, 1000
-
-      assert_receive {:puck_stream, ^stream_id, {:chunk, %{type: :content, content: "world"}}},
-                     1000
-
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: "hello"}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: " "}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: "world"}}}, 1000
       assert_receive {:puck_stream, ^stream_id, {:done, %Response{}, %Context{}}}, 1000
     end
 
@@ -46,7 +41,7 @@ defmodule Puck.LiveViewTest do
 
       {:ok, id} = Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
 
-      assert_receive {:puck_stream, ^id, {:chunk, chunk}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, chunk}}, 1000
       assert chunk.type == :content
       assert chunk.content == "hi"
       assert chunk.metadata == %{partial: true, backend: :mock}
@@ -73,6 +68,15 @@ defmodule Puck.LiveViewTest do
       assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
       assert response.content == "hello world"
       assert response.finish_reason == :stop
+    end
+
+    test "done message includes metadata from last chunk" do
+      client = Client.new({Mock, stream_chunks: ["hi"]})
+
+      {:ok, id} = Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert response.metadata == %{partial: true, backend: :mock}
     end
 
     test "done message includes updated context with assistant message" do

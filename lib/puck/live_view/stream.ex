@@ -66,19 +66,28 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     @impl true
     def handle_info({:stream_chunk, chunk}, state) do
       state = accumulate_chunk(state, chunk)
-      broadcast(state, chunk_event(chunk))
+      broadcast(state, {chunk_type(chunk), chunk})
       {:noreply, state}
     end
 
-    def handle_info({ref, {:stream_done, result_context}}, %{task_ref: ref} = state) do
+    def handle_info(
+          {ref, {:stream_done, result_context, last_chunk}},
+          %{task_ref: ref} = state
+        ) do
       Process.demonitor(ref, [:flush])
+
+      finish_reason = chunk_field(last_chunk, :finish_reason, :stop)
+      metadata = chunk_field(last_chunk, :metadata, %{})
 
       response =
         Response.new(
           content: state.content,
-          finish_reason: :stop
+          finish_reason: finish_reason,
+          metadata: metadata
         )
 
+      # Puck.stream/4 returns context with only the user message added.
+      # The assistant message must be added here with backend metadata.
       final_context =
         Context.add_message(result_context, :assistant, response.content, response.metadata)
 
@@ -131,11 +140,13 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     defp consume(parent, client, prompt, context, opts) do
       case Puck.stream(client, prompt, context, opts) do
         {:ok, stream, updated_context} ->
-          Enum.each(stream, fn chunk ->
-            send(parent, {:stream_chunk, chunk})
-          end)
+          last_chunk =
+            Enum.reduce(stream, nil, fn chunk, _acc ->
+              send(parent, {:stream_chunk, chunk})
+              chunk
+            end)
 
-          {:stream_done, updated_context}
+          {:stream_done, updated_context, last_chunk}
 
         {:error, reason} ->
           {:error, reason}
@@ -148,9 +159,11 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     defp accumulate_chunk(state, _chunk), do: state
 
-    defp chunk_event(%{type: :content} = chunk), do: {:chunk, chunk}
-    defp chunk_event(%{type: :thinking} = chunk), do: {:thinking, chunk}
-    defp chunk_event(chunk), do: {:chunk, chunk}
+    defp chunk_type(%{type: type}), do: type
+    defp chunk_type(_chunk), do: :unknown
+
+    defp chunk_field(nil, _key, default), do: default
+    defp chunk_field(chunk, key, default), do: Map.get(chunk, key, default)
 
     defp broadcast(state, event) do
       Phoenix.PubSub.broadcast(
