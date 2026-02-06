@@ -13,7 +13,7 @@ One function. Any provider. Build whatever you want on top.
 
 ## The Primitives
 
-Seven building blocks. Compose them however you need:
+Eight building blocks. Compose them however you need:
 
 | Primitive | Purpose |
 |-----------|---------|
@@ -24,6 +24,7 @@ Seven building blocks. Compose them however you need:
 | `Puck.Compaction` | Handle long conversations |
 | `Puck.Eval` | Capture trajectories, grade outputs |
 | `Puck.Sandbox` | Execute LLM-generated code safely |
+| `Puck.LiveView` | Stream LLM responses into Phoenix LiveView |
 
 No orchestration. No hidden control flow. You write the loop.
 
@@ -718,7 +719,10 @@ Requires `{:phoenix_pubsub, "~> 2.1"}` and `{:phoenix_live_view, "~> 1.0"}`.
 ```elixir
 # application.ex
 children = [
-  {Puck.LiveView, pubsub: MyApp.PubSub, retention_ms: :timer.minutes(5)}
+  {Puck.LiveView,
+   pubsub: MyApp.PubSub,
+   retention_ms: :timer.minutes(5),
+   sweep_interval: :timer.seconds(30)}
 ]
 
 # with a custom store adapter
@@ -763,6 +767,12 @@ defmodule MyAppWeb.ChatLive do
 end
 ```
 
+Use `mode: :call` for a non-streaming request that still persists to the store:
+
+```elixir
+Puck.LiveView.send_message(socket, message, mode: :call)
+```
+
 ### Reconnecting to a Stream
 
 Store the `puck_stream_id` (e.g. in the URL) and call `subscribe/2` on mount:
@@ -793,19 +803,6 @@ GenServer has crashed. If the entry has expired, `puck_status` is set to `:not_f
 - Database-specific schema choices
 - Audit/event history storage
 - Multi-node replication details
-
-## LiveView Migration (PR #8 -> current)
-
-- Removed built-in `Puck.LiveView.Store.Ecto` from core
-- Simplified `Puck.LiveView.Store` to snapshot-focused callbacks
-- Replaced `persistent_term` runtime config with an internal config process
-- Consolidated retention to one policy: `retention_ms` (supervisor option)
-
-Impact:
-
-- `Puck.LiveView` public API is unchanged
-- Existing usage without custom store continues to work
-- Custom stores from PR #8 need to implement the new smaller store behavior
 
 ## Acknowledgments
 

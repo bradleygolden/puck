@@ -1,12 +1,25 @@
 defmodule Puck.LiveView.Store.ETS do
   @moduledoc """
   ETS-backed `Puck.LiveView.Store` implementation.
+
+  Snapshots are local to the current node. For multi-node deployments,
+  implement a custom `Puck.LiveView.Store`.
   """
 
   @behaviour Puck.LiveView.Store
 
   @default_session_table Puck.LiveView.Store.ETS.Sessions
 
+  @doc """
+  Initializes the ETS store.
+
+  ## Options
+
+    - `:session_table` - ETS table name (default: `Puck.LiveView.Store.ETS.Sessions`)
+    - `:registry` - Registry name for checking live GenServers during sweep
+      (default: `Puck.LiveView.Registry`)
+
+  """
   def init(opts) do
     session_table = Keyword.get(opts, :session_table, @default_session_table)
     registry = Keyword.get(opts, :registry, Puck.LiveView.Registry)
@@ -17,9 +30,11 @@ defmodule Puck.LiveView.Store.ETS do
   end
 
   def put_stream(config, stream_id, snapshot) do
-    session = snapshot |> Map.new() |> Map.put(:updated_at, now_ms())
+    session = Map.put(snapshot, :updated_at, now_ms())
     :ets.insert(config.session_table, {stream_id, session})
     :ok
+  rescue
+    e in ArgumentError -> {:error, e}
   end
 
   def get_stream(config, stream_id) do
@@ -28,22 +43,21 @@ defmodule Puck.LiveView.Store.ETS do
       [] -> :not_found
     end
   rescue
-    exception -> {:error, exception}
+    e in ArgumentError -> {:error, e}
   end
 
   def delete_stream(config, stream_id) do
     :ets.delete(config.session_table, stream_id)
     :ok
   rescue
-    exception -> {:error, exception}
+    e in ArgumentError -> {:error, e}
   end
 
   def sweep(config, opts) do
     now = now_ms()
     retention_ms = Keyword.get(opts, :retention_ms, 300_000)
 
-    :ets.tab2list(config.session_table)
-    |> Enum.each(fn {stream_id, entry} ->
+    Enum.each(:ets.tab2list(config.session_table), fn {stream_id, entry} ->
       if now - entry.updated_at > retention_ms and
            not genserver_alive?(config.registry, stream_id) do
         delete_stream(config, stream_id)
@@ -52,13 +66,13 @@ defmodule Puck.LiveView.Store.ETS do
 
     :ok
   rescue
-    exception -> {:error, exception}
+    e in ArgumentError -> {:error, e}
   end
 
   defp ensure_table(table, opts) do
-    if :ets.whereis(table) == :undefined do
-      :ets.new(table, opts)
-    end
+    :ets.new(table, opts)
+  rescue
+    ArgumentError -> :ok
   end
 
   defp genserver_alive?(registry, stream_id) do
@@ -67,7 +81,7 @@ defmodule Puck.LiveView.Store.ETS do
       [] -> false
     end
   rescue
-    ArgumentError -> false
+    ArgumentError -> true
   end
 
   defp now_ms, do: System.monotonic_time(:millisecond)

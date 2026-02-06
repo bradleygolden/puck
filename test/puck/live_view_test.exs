@@ -206,6 +206,20 @@ defmodule Puck.LiveViewTest do
       refute_receive {:puck, {:chunk, :content, "stale"}}, 100
     end
 
+    test "returns error when store read fails" do
+      :ets.delete(@table)
+
+      socket =
+        build_socket()
+        |> Puck.LiveView.assign_defaults(Client.new({Mock, response: "x"}))
+        |> Puck.LiveView.subscribe("any-id")
+
+      assert socket.assigns.puck_status == :error
+      assert {:failed_to_load_stream, _reason} = socket.assigns.puck_error
+
+      :ets.new(@table, [:named_table, :public, :set, write_concurrency: true])
+    end
+
     test "expired stream becomes not_found after retention window" do
       client = Client.new({Mock, stream_chunks: ["ok"]})
 

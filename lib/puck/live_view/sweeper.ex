@@ -4,6 +4,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     use GenServer
 
+    require Logger
+
     def start_link(opts) do
       name = Keyword.get(opts, :name, __MODULE__)
       GenServer.start_link(__MODULE__, opts, name: name)
@@ -28,7 +30,15 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     @impl true
     def handle_info(:sweep, state) do
       {store_module, store_config} = state.store
-      _ = store_module.sweep(store_config, retention_ms: state.retention_ms)
+
+      case store_module.sweep(store_config, retention_ms: state.retention_ms) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          Logger.error("Puck.LiveView.Sweeper sweep failed: #{inspect(reason)}")
+      end
+
       schedule_sweep(state.interval)
       {:noreply, state}
     end

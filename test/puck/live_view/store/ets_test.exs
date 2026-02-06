@@ -3,12 +3,19 @@ defmodule Puck.LiveView.Store.ETSTest do
 
   alias Puck.LiveView.Store.ETS, as: ETSStore
 
-  defp table_name(suffix) do
-    :"puck_store_#{suffix}_#{System.unique_integer([:positive])}"
+  defp unique_name(prefix) do
+    :"#{prefix}_#{System.unique_integer([:positive])}"
+  end
+
+  defp init_store do
+    registry = unique_name("registry")
+    start_supervised!({Registry, keys: :unique, name: registry})
+    {:ok, config} = ETSStore.init(session_table: unique_name("sessions"), registry: registry)
+    {config, registry}
   end
 
   test "puts and gets stream snapshot" do
-    {:ok, config} = ETSStore.init(session_table: table_name("sessions"))
+    {config, _registry} = init_store()
 
     :ok =
       ETSStore.put_stream(config, "stream-1", %{
@@ -22,7 +29,7 @@ defmodule Puck.LiveView.Store.ETSTest do
   end
 
   test "updates stream by writing latest snapshot" do
-    {:ok, config} = ETSStore.init(session_table: table_name("sessions"))
+    {config, _registry} = init_store()
 
     :ok = ETSStore.put_stream(config, "stream-1", %{status: :streaming, content: "hello"})
     :ok = ETSStore.put_stream(config, "stream-1", %{status: :done, content: "hello world"})
@@ -33,17 +40,41 @@ defmodule Puck.LiveView.Store.ETSTest do
   end
 
   test "deletes stream" do
-    {:ok, config} = ETSStore.init(session_table: table_name("sessions"))
+    {config, _registry} = init_store()
     :ok = ETSStore.put_stream(config, "stream-1", %{status: :streaming})
     :ok = ETSStore.delete_stream(config, "stream-1")
     assert :not_found = ETSStore.get_stream(config, "stream-1")
   end
 
   test "sweep deletes stale stream without active process" do
-    {:ok, config} = ETSStore.init(session_table: table_name("sessions"))
+    {config, _registry} = init_store()
     :ok = ETSStore.put_stream(config, "stream-1", %{status: :done, content: "x"})
     Process.sleep(10)
     :ok = ETSStore.sweep(config, retention_ms: 1)
     assert :not_found = ETSStore.get_stream(config, "stream-1")
+  end
+
+  test "sweep preserves stale stream with active registered process" do
+    {config, registry} = init_store()
+    :ok = ETSStore.put_stream(config, "stream-1", %{status: :streaming, content: "x"})
+    Registry.register(registry, "stream-1", nil)
+    Process.sleep(10)
+    :ok = ETSStore.sweep(config, retention_ms: 1)
+    assert {:ok, _} = ETSStore.get_stream(config, "stream-1")
+  end
+
+  test "get_stream returns error for non-existent table" do
+    config = %{session_table: :nonexistent_table, registry: :nonexistent_registry}
+    assert {:error, %ArgumentError{}} = ETSStore.get_stream(config, "stream-1")
+  end
+
+  test "delete_stream returns error for non-existent table" do
+    config = %{session_table: :nonexistent_table, registry: :nonexistent_registry}
+    assert {:error, %ArgumentError{}} = ETSStore.delete_stream(config, "stream-1")
+  end
+
+  test "put_stream returns error for non-existent table" do
+    config = %{session_table: :nonexistent_table, registry: :nonexistent_registry}
+    assert {:error, %ArgumentError{}} = ETSStore.put_stream(config, "stream-1", %{status: :done})
   end
 end

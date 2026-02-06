@@ -10,6 +10,7 @@ defmodule Puck.LiveView.StreamTest do
   @table Puck.LiveView.StreamTest.Store
   @registry Puck.LiveView.Registry
   @dynamic_supervisor Puck.LiveView.DynamicSupervisor
+  @task_supervisor Puck.LiveView.TaskSupervisor
 
   setup do
     start_supervised!({Phoenix.PubSub, name: @pubsub})
@@ -49,6 +50,7 @@ defmodule Puck.LiveView.StreamTest do
            stream_id: stream_id,
            pubsub: @pubsub,
            store: {Puck.LiveView.Store.ETS, %{session_table: @table, registry: @registry}},
+           task_supervisor: @task_supervisor,
            registry: @registry,
            client: client,
            content: "test message",
@@ -161,6 +163,35 @@ defmodule Puck.LiveView.StreamTest do
     end
   end
 
+  describe "thinking chunks" do
+    test "accumulates thinking content and broadcasts" do
+      client = Client.new({Mock, response: "slow", delay: 300})
+      %{stream_id: id, pid: pid} = start_stream(client: client, mode: :call)
+
+      send(pid, {:stream_chunk, %{type: :thinking, content: "hmm"}})
+      send(pid, {:stream_chunk, %{type: :thinking, content: " let me think"}})
+
+      assert_receive {:puck, {:chunk, :thinking, "hmm"}}, 1000
+      assert_receive {:puck, {:chunk, :thinking, "hmm let me think"}}, 1000
+
+      entry = fetch_stream!(id)
+      assert entry.thinking == "hmm let me think"
+
+      assert_receive {:puck, {:done, _, _}}, 1000
+    end
+  end
+
+  describe "unknown chunk types" do
+    test "does not crash the GenServer" do
+      client = Client.new({Mock, response: "slow", delay: 200})
+      %{pid: pid} = start_stream(client: client, mode: :call)
+
+      send(pid, {:stream_chunk, %{type: :unknown, content: "mystery"}})
+
+      assert_receive {:puck, {:done, _, _}}, 1000
+    end
+  end
+
   describe "error handling" do
     test "broadcasts error when backend fails" do
       client = Client.new({Mock, error: :rate_limited})
@@ -170,15 +201,22 @@ defmodule Puck.LiveView.StreamTest do
 
       entry = fetch_stream!(id)
       assert entry.status == :error
+      assert entry.error != nil
     end
 
-    test "calls on_error callback" do
+    test "calls on_error callback with snapshot" do
       test_pid = self()
-      on_error = fn reason, _snapshot -> send(test_pid, {:callback_error, reason}) end
+
+      on_error = fn reason, snapshot ->
+        send(test_pid, {:callback_error, reason, snapshot})
+      end
+
       client = Client.new({Mock, error: :rate_limited})
       start_stream(client: client, on_error: on_error)
 
-      assert_receive {:callback_error, _reason}, 1000
+      assert_receive {:callback_error, _reason, snapshot}, 1000
+      assert Map.has_key?(snapshot, :stream_id)
+      assert Map.has_key?(snapshot, :content)
     end
   end
 

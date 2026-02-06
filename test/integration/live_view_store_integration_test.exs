@@ -110,4 +110,34 @@ defmodule Puck.Integration.LiveViewStoreTest do
     assert_receive {:store, :put_stream, ^stream_id, %{status: :cancelled}}, 1000
     assert_receive {:puck, {:cancelled, _}}, 1000
   end
+
+  test "persists error status through custom store" do
+    client = Client.new({Mock, error: :rate_limited})
+
+    socket =
+      build_socket()
+      |> Puck.LiveView.assign_defaults(client)
+      |> Puck.LiveView.send_message("test")
+
+    stream_id = socket.assigns.puck_stream_id
+    assert_receive {:store, :put_stream, ^stream_id, %{status: :error}}, 1000
+    assert_receive {:puck, {:error, _}}, 1000
+  end
+
+  test "call mode completion persists through custom store" do
+    client = Client.new({Mock, response: "call result"})
+
+    socket =
+      build_socket()
+      |> Puck.LiveView.assign_defaults(client)
+      |> Puck.LiveView.send_message("test", mode: :call)
+
+    stream_id = socket.assigns.puck_stream_id
+    assert_receive {:store, :put_stream, ^stream_id, %{status: :done}}, 1000
+    assert_receive {:puck, {:done, response, _context}}, 1000
+    assert response.content == "call result"
+
+    reconnected = await_reconnect_status(client, stream_id, :done)
+    assert reconnected.assigns.puck_content == "call result"
+  end
 end

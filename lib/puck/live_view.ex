@@ -69,7 +69,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     | `puck_content` | `String.t()` | `""` |
     | `puck_thinking` | `String.t()` | `""` |
     | `puck_markdown` | `String.t()` | `""` |
-    | `puck_status` | `atom()` | `:idle` |
+    | `puck_status` | `:idle \\| :streaming \\| :done \\| :error \\| :cancelled \\| :not_found` | `:idle` |
     | `puck_error` | `term() \\| nil` | `nil` |
 
     """
@@ -82,9 +82,25 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     @registry Puck.LiveView.Registry
     @dynamic_supervisor Puck.LiveView.DynamicSupervisor
 
+    @doc """
+    Starts the LiveView supervision tree.
+
+    ## Options
+
+      - `:pubsub` - (required) PubSub module, e.g. `MyApp.PubSub`
+      - `:store` - Store module or `{module, opts}` tuple
+        (default: `Puck.LiveView.Store.ETS`)
+      - `:retention_ms` - How long completed snapshots are kept, in milliseconds
+        (default: `300_000`)
+      - `:sweep_interval` - How often the sweeper runs, in milliseconds
+        (default: `30_000`)
+
+    """
     def start_link(opts) do
       Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
     end
+
+    @task_supervisor Puck.LiveView.TaskSupervisor
 
     @impl true
     def init(opts) do
@@ -97,9 +113,11 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
 
       {:ok, store_config} = store_module.init(Keyword.put_new(store_opts, :registry, @registry))
 
+      Config.put(pubsub: pubsub, store: {store_module, store_config})
+
       children = [
-        {Puck.LiveView.Config, pubsub: pubsub, store: {store_module, store_config}},
         {Registry, keys: :unique, name: @registry},
+        {Task.Supervisor, name: @task_supervisor},
         {DynamicSupervisor, name: @dynamic_supervisor, strategy: :one_for_one},
         {Puck.LiveView.Sweeper,
          store: {store_module, store_config},
@@ -157,7 +175,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
       {on_chunk, opts} = Keyword.pop(opts, :on_chunk)
       {on_done, opts} = Keyword.pop(opts, :on_done)
       {on_error, opts} = Keyword.pop(opts, :on_error)
-      {_ttl, opts} = Keyword.pop(opts, :ttl)
       {stream_id, opts} = Keyword.pop_lazy(opts, :stream_id, &generate_id/0)
 
       %{pubsub: pubsub, store: store} = config()
@@ -173,6 +190,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
                 stream_id: stream_id,
                 pubsub: pubsub,
                 store: store,
+                task_supervisor: @task_supervisor,
                 registry: @registry,
                 client: socket.assigns.puck_client,
                 content: content,
@@ -207,7 +225,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     end
 
     @doc """
-    Reconnects to an existing stream by reading state from ETS.
+    Reconnects to an existing stream by reading state from the configured store.
 
     Works even if the stream's GenServer has crashed, since the snapshot store is the source
     of truth. Sets `puck_status` to `:not_found` if the entry has expired.

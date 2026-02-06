@@ -4,6 +4,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     use GenServer
 
+    require Logger
+
     alias Puck.{Context, Response}
 
     def start_link(opts) do
@@ -21,11 +23,10 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     @impl true
     def init(opts) do
-      Process.flag(:trap_exit, true)
-
       stream_id = Keyword.fetch!(opts, :stream_id)
       pubsub = Keyword.fetch!(opts, :pubsub)
       store = Keyword.fetch!(opts, :store)
+      task_supervisor = Keyword.fetch!(opts, :task_supervisor)
       client = Keyword.fetch!(opts, :client)
       content = Keyword.fetch!(opts, :content)
       context = Keyword.fetch!(opts, :context)
@@ -67,7 +68,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       case persist_put_stream(state, initial_entry) do
         :ok ->
           me = self()
-          task = Task.async(fn -> consume(me, client, content, context, mode, stream_opts) end)
+
+          task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              consume(me, client, content, context, mode, stream_opts)
+            end)
+
           {:ok, %{state | task_ref: task.ref, task_pid: task.pid}}
 
         {:error, reason} ->
@@ -168,12 +174,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       end
     end
 
-    def handle_info({:EXIT, _pid, _reason}, state) do
-      {:noreply, state}
-    end
-
-    # -- Stream consumption (runs in Task) --
-
     defp consume(parent, client, content, context, :stream, opts) do
       case Puck.stream(client, content, context, opts) do
         {:ok, stream, updated_context} ->
@@ -198,8 +198,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       end
     end
 
-    # -- Chunk accumulation --
-
     defp accumulate_chunk(state, %{type: :content, content: text}) do
       new_content = state.content <> to_string(text)
       new_markdown = if(state.render_fn, do: state.render_fn.(new_content), else: "")
@@ -211,8 +209,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     end
 
     defp accumulate_chunk(state, _chunk), do: state
-
-    # -- PubSub broadcasts --
 
     defp broadcast_chunk(state, %{type: :content}) do
       topic = topic(state.stream_id)
@@ -253,12 +249,16 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       )
     end
 
-    # -- Store writes --
-
-    # -- Error handling --
-
     defp handle_stream_error(state, reason) do
-      _ = persist_error(state, reason)
+      case persist_error(state, reason) do
+        :ok ->
+          :ok
+
+        {:error, store_reason} ->
+          Logger.error(
+            "Puck.LiveView.Stream failed to persist error for stream #{state.stream_id}: #{inspect(store_reason)}"
+          )
+      end
 
       Phoenix.PubSub.broadcast(
         state.pubsub,
@@ -269,8 +269,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       safe_callback(state.on_error, [reason, snapshot(state)])
       {:stop, :normal, state}
     end
-
-    # -- Helpers --
 
     defp snapshot(state) do
       %{
@@ -287,7 +285,9 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     defp safe_callback(fun, args) do
       apply(fun, args)
     rescue
-      _ -> :ok
+      e ->
+        Logger.error("Puck.LiveView callback failed: #{Exception.message(e)}")
+        :ok
     end
 
     defp topic(stream_id), do: "puck:stream:#{stream_id}"

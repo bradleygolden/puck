@@ -164,7 +164,9 @@ defmodule Puck.MixProject do
           Puck.Eval.Inspector
         ],
         LiveView: [
-          Puck.LiveView
+          Puck.LiveView,
+          Puck.LiveView.Store,
+          Puck.LiveView.Store.ETS
         ],
         Testing: [
           Puck.Test
