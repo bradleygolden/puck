@@ -151,6 +151,7 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
     defp build_sdk_options(config, messages, output_schema) do
       opts = %ClaudeAgentSDK.Options{
         cwd: config[:cwd],
+        tools: config[:tools],
         allowed_tools: config[:allowed_tools],
         disallowed_tools: config[:disallowed_tools],
         permission_mode: config[:permission_mode],
