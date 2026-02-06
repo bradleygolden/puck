@@ -68,13 +68,33 @@ defmodule Puck.LiveView.Store.ETSTest do
     assert {:error, %ArgumentError{}} = ETSStore.get_stream(config, "stream-1")
   end
 
-  test "delete_stream returns error for non-existent table" do
+  test "delete_stream raises for non-existent table" do
     config = %{session_table: :nonexistent_table, registry: :nonexistent_registry}
-    assert {:error, %ArgumentError{}} = ETSStore.delete_stream(config, "stream-1")
+
+    assert_raise ArgumentError, fn ->
+      ETSStore.delete_stream(config, "stream-1")
+    end
   end
 
-  test "put_stream returns error for non-existent table" do
+  test "put_stream raises for non-existent table" do
     config = %{session_table: :nonexistent_table, registry: :nonexistent_registry}
-    assert {:error, %ArgumentError{}} = ETSStore.put_stream(config, "stream-1", %{status: :done})
+
+    assert_raise ArgumentError, fn ->
+      ETSStore.put_stream(config, "stream-1", %{status: :done})
+    end
+  end
+
+  test "init is idempotent" do
+    table = unique_name("idempotent")
+    registry = unique_name("registry")
+    start_supervised!({Registry, keys: :unique, name: registry})
+
+    {:ok, config1} = ETSStore.init(session_table: table, registry: registry)
+    {:ok, config2} = ETSStore.init(session_table: table, registry: registry)
+
+    assert config1 == config2
+
+    :ok = ETSStore.put_stream(config1, "stream-1", %{status: :done})
+    assert {:ok, _} = ETSStore.get_stream(config2, "stream-1")
   end
 end

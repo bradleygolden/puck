@@ -2,8 +2,8 @@ defmodule Puck.LiveView.Store do
   @moduledoc """
   Storage behaviour for LiveView stream snapshots.
 
-  Implementations persist the latest stream state per `stream_id`. Puck ships
-  with `Puck.LiveView.Store.ETS` as the default.
+  Each implementation persists the latest stream state per `stream_id`. Puck
+  ships with `Puck.LiveView.Store.ETS` as the default.
 
   ## Snapshot shape
 
@@ -31,21 +31,21 @@ defmodule Puck.LiveView.Store do
   @callback init(opts :: keyword()) :: {:ok, config :: term()} | {:error, reason :: term()}
 
   @doc """
-  Persists a stream snapshot. Called on every chunk, completion, error, and
-  cancellation.
+  Writes a stream snapshot to the store. Called on every chunk, completion,
+  error, and cancellation.
   """
   @callback put_stream(config :: term(), stream_id :: String.t(), snapshot :: map()) ::
               :ok | {:error, reason :: term()}
 
   @doc """
-  Retrieves the latest snapshot for a stream. Returns `:not_found` when the
+  Reads the latest snapshot for a stream. Returns `:not_found` when the
   stream has expired or was never created.
   """
   @callback get_stream(config :: term(), stream_id :: String.t()) ::
               {:ok, map()} | :not_found | {:error, reason :: term()}
 
   @doc """
-  Removes a stream snapshot.
+  Deletes a stream snapshot from the store.
   """
   @callback delete_stream(config :: term(), stream_id :: String.t()) ::
               :ok | {:error, reason :: term()}

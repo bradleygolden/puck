@@ -1,8 +1,6 @@
 defmodule Puck.LiveView.SweeperTest do
   use ExUnit.Case, async: true
 
-  import ExUnit.CaptureLog
-
   alias Puck.LiveView.Store.ETS, as: ETSStore
 
   defp unique_name(prefix) do
@@ -36,7 +34,7 @@ defmodule Puck.LiveView.SweeperTest do
     assert :not_found = ETSStore.get_stream(config, "old-stream")
   end
 
-  test "logs error when sweep fails" do
+  test "emits telemetry event when sweep fails" do
     defmodule FailingSweepStore do
       @behaviour Puck.LiveView.Store
 
@@ -47,6 +45,17 @@ defmodule Puck.LiveView.SweeperTest do
       def sweep(_c, _opts), do: {:error, :kaboom}
     end
 
+    test_pid = self()
+
+    :telemetry.attach(
+      "sweeper-test-handler",
+      [:puck, :live_view, :sweeper, :error],
+      fn event, measurements, metadata, _config ->
+        send(test_pid, {:telemetry, event, measurements, metadata})
+      end,
+      nil
+    )
+
     sweeper =
       start_supervised!(
         {Puck.LiveView.Sweeper,
@@ -56,13 +65,12 @@ defmodule Puck.LiveView.SweeperTest do
          retention_ms: 300_000}
       )
 
-    log =
-      capture_log(fn ->
-        send(sweeper, :sweep)
-        Process.sleep(50)
-      end)
+    send(sweeper, :sweep)
 
-    assert log =~ "sweep failed"
+    assert_receive {:telemetry, [:puck, :live_view, :sweeper, :error], %{}, %{reason: :kaboom}},
+                   1000
+
+    :telemetry.detach("sweeper-test-handler")
   end
 
   test "reschedules sweep after handling" do

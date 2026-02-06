@@ -36,6 +36,21 @@ defmodule Puck.LiveViewTest do
     end
   end
 
+  defp poll_until(fun, timeout \\ 500) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_poll(fun, deadline)
+  end
+
+  defp do_poll(fun, deadline) do
+    if fun.() do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) > deadline, do: raise("poll timed out")
+      Process.sleep(1)
+      do_poll(fun, deadline)
+    end
+  end
+
   describe "assign_defaults/3" do
     test "sets all default assigns" do
       client = Client.new({Mock, response: "test"})
@@ -329,7 +344,8 @@ defmodule Puck.LiveViewTest do
         |> Puck.LiveView.assign_defaults(client)
         |> Puck.LiveView.send_message("test", mode: :call)
 
-      Process.sleep(50)
+      stream_id = socket.assigns.puck_stream_id
+      poll_until(fn -> Registry.lookup(@registry, stream_id) != [] end)
       cancelled_socket = Puck.LiveView.cancel(socket)
 
       assert cancelled_socket.assigns.puck_status == :cancelled

@@ -4,7 +4,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     use GenServer
 
-    require Logger
+    alias Puck.Runtime.Telemetry
 
     def start_link(opts) do
       name = Keyword.get(opts, :name, __MODULE__)
@@ -36,7 +36,11 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
           :ok
 
         {:error, reason} ->
-          Logger.error("Puck.LiveView.Sweeper sweep failed: #{inspect(reason)}")
+          Telemetry.event(
+            [:live_view, :sweeper, :error],
+            %{},
+            %{reason: reason}
+          )
       end
 
       schedule_sweep(state.interval)

@@ -3,8 +3,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     @moduledoc """
     Durable streaming integration for Phoenix LiveView.
 
-    Stream state is stored through a configurable `Puck.LiveView.Store`
-    implementation. The default store uses ETS snapshots. LiveViews subscribe
+    A configurable `Puck.LiveView.Store` persists stream state between
+    connections. The default store uses ETS snapshots. LiveViews subscribe
     via PubSub and can reconnect to in-progress or completed streams.
 
     ## Setup
@@ -227,8 +227,9 @@ if Code.ensure_loaded?(Phoenix.PubSub) and Code.ensure_loaded?(Phoenix.Component
     @doc """
     Reconnects to an existing stream by reading state from the configured store.
 
-    Works even if the stream's GenServer has crashed, since the snapshot store is the source
-    of truth. Sets `puck_status` to `:not_found` if the entry has expired.
+    Works even if the stream's GenServer has crashed, since the snapshot store
+    holds the authoritative state. Sets `puck_status` to `:not_found` if the
+    entry has expired.
 
     """
     def subscribe(socket, stream_id) do

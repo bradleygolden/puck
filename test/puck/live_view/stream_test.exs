@@ -77,6 +77,21 @@ defmodule Puck.LiveView.StreamTest do
     end
   end
 
+  defp poll_until(fun, timeout \\ 500) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_poll(fun, deadline)
+  end
+
+  defp do_poll(fun, deadline) do
+    if fun.() do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) > deadline, do: raise("poll timed out")
+      Process.sleep(1)
+      do_poll(fun, deadline)
+    end
+  end
+
   defp fetch_stream!(stream_id) do
     {:ok, stream} =
       ETSStore.get_stream(%{session_table: @table, registry: @registry}, stream_id)
@@ -106,7 +121,13 @@ defmodule Puck.LiveView.StreamTest do
       client = Client.new({Mock, response: "slow", delay: 200})
       %{stream_id: id} = start_stream(client: client, mode: :call)
 
-      Process.sleep(50)
+      poll_until(fn ->
+        case ETSStore.get_stream(%{session_table: @table, registry: @registry}, id) do
+          {:ok, entry} -> entry.status == :streaming
+          _ -> false
+        end
+      end)
+
       entry = fetch_stream!(id)
       assert entry.status == :streaming
     end
@@ -197,11 +218,11 @@ defmodule Puck.LiveView.StreamTest do
       client = Client.new({Mock, error: :rate_limited})
       %{stream_id: id} = start_stream(client: client)
 
-      assert_receive {:puck, {:error, _reason}}, 1000
+      assert_receive {:puck, {:error, :rate_limited}}, 1000
 
       entry = fetch_stream!(id)
       assert entry.status == :error
-      assert entry.error != nil
+      assert entry.error == :rate_limited
     end
 
     test "calls on_error callback with snapshot" do
@@ -214,7 +235,7 @@ defmodule Puck.LiveView.StreamTest do
       client = Client.new({Mock, error: :rate_limited})
       start_stream(client: client, on_error: on_error)
 
-      assert_receive {:callback_error, _reason, snapshot}, 1000
+      assert_receive {:callback_error, :rate_limited, snapshot}, 1000
       assert Map.has_key?(snapshot, :stream_id)
       assert Map.has_key?(snapshot, :content)
     end
@@ -225,7 +246,7 @@ defmodule Puck.LiveView.StreamTest do
       client = Client.new({Mock, response: "slow", delay: 500})
       %{stream_id: id} = start_stream(client: client, mode: :call)
 
-      Process.sleep(50)
+      poll_until(fn -> Registry.lookup(@registry, id) != [] end)
       StreamServer.cancel(@registry, id)
 
       assert_receive {:puck, {:cancelled, _}}, 1000
@@ -245,6 +266,40 @@ defmodule Puck.LiveView.StreamTest do
 
       assert [{^pid, _}] = Registry.lookup(@registry, id)
       assert_receive {:puck, {:done, _, _}}, 1000
+    end
+  end
+
+  describe "concurrent streams" do
+    test "handles concurrent streams with different IDs" do
+      client1 = Client.new({Mock, response: "result one", delay: 50})
+      client2 = Client.new({Mock, response: "result two", delay: 50})
+
+      %{stream_id: id1} = start_stream(stream_id: "concurrent-1", client: client1, mode: :call)
+      %{stream_id: id2} = start_stream(stream_id: "concurrent-2", client: client2, mode: :call)
+
+      assert_receive {:puck, {:done, _, _}}, 1000
+      assert_receive {:puck, {:done, _, _}}, 1000
+
+      entry1 = fetch_stream!(id1)
+      entry2 = fetch_stream!(id2)
+
+      assert entry1.status == :done
+      assert entry1.content == "result one"
+      assert entry2.status == :done
+      assert entry2.content == "result two"
+    end
+  end
+
+  describe "markdown rendering" do
+    test "stream with render_fn=nil skips markdown broadcasts" do
+      %{stream_id: id} = start_stream(markdown: nil)
+
+      assert_receive {:puck, {:chunk, :content, _}}, 1000
+      refute_receive {:puck, {:chunk, :markdown, _}}, 100
+      assert_receive {:puck, {:done, _, _}}, 1000
+
+      entry = fetch_stream!(id)
+      assert entry.markdown == ""
     end
   end
 end

@@ -4,9 +4,23 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     use GenServer
 
-    require Logger
-
     alias Puck.{Context, Response}
+    alias Puck.Runtime.Telemetry
+
+    defmodule Entry do
+      @moduledoc false
+      @enforce_keys [:status]
+      defstruct [
+        :status,
+        :error,
+        :response,
+        :context,
+        content: "",
+        thinking: "",
+        markdown: "",
+        updated_at: nil
+      ]
+    end
 
     def start_link(opts) do
       stream_id = Keyword.fetch!(opts, :stream_id)
@@ -37,13 +51,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       on_error = Keyword.get(opts, :on_error)
       stream_opts = Keyword.get(opts, :stream_opts, [])
 
-      initial_entry = %{
-        content: "",
-        thinking: "",
-        markdown: "",
+      initial_entry = %Entry{
         status: :streaming,
-        error: nil,
-        response: nil,
         context: context,
         updated_at: System.monotonic_time(:millisecond)
       }
@@ -255,8 +264,10 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
           :ok
 
         {:error, store_reason} ->
-          Logger.error(
-            "Puck.LiveView.Stream failed to persist error for stream #{state.stream_id}: #{inspect(store_reason)}"
+          Telemetry.event(
+            [:live_view, :stream, :store_error],
+            %{},
+            %{stream_id: state.stream_id, reason: store_reason}
           )
       end
 
@@ -286,7 +297,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       apply(fun, args)
     rescue
       e ->
-        Logger.error("Puck.LiveView callback failed: #{Exception.message(e)}")
+        Telemetry.event(
+          [:live_view, :stream, :callback_error],
+          %{},
+          %{exception: e, stacktrace: __STACKTRACE__, callback: fun}
+        )
+
         :ok
     end
 
@@ -308,25 +324,22 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     end
 
     defp streaming_entry(state) do
-      %{
+      %Entry{
         content: state.content,
         thinking: state.thinking,
         markdown: state.markdown,
         status: :streaming,
-        error: nil,
-        response: nil,
         context: state.context,
         updated_at: System.monotonic_time(:millisecond)
       }
     end
 
     defp done_entry(state, response, context) do
-      %{
+      %Entry{
         content: state.content,
         thinking: state.thinking,
         markdown: state.markdown,
         status: :done,
-        error: nil,
         response: response,
         context: context,
         updated_at: System.monotonic_time(:millisecond)
@@ -334,26 +347,23 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     end
 
     defp error_entry(state, reason) do
-      %{
+      %Entry{
         content: state.content,
         thinking: state.thinking,
         markdown: state.markdown,
         status: :error,
         error: reason,
-        response: nil,
         context: state.context,
         updated_at: System.monotonic_time(:millisecond)
       }
     end
 
     defp cancelled_entry(state) do
-      %{
+      %Entry{
         content: state.content,
         thinking: state.thinking,
         markdown: state.markdown,
         status: :cancelled,
-        error: nil,
-        response: nil,
         context: state.context,
         updated_at: System.monotonic_time(:millisecond)
       }

@@ -23,4 +23,10 @@ defmodule Puck.LiveView.ConfigTest do
     Config.delete()
     assert {:error, :not_started} = Config.get()
   end
+
+  test "put overwrites previous config" do
+    Config.put(pubsub: MyApp.PubSub, store: {SomeStore, %{}})
+    Config.put(pubsub: OtherApp.PubSub, store: {OtherStore, %{}})
+    assert {:ok, %{pubsub: OtherApp.PubSub, store: {OtherStore, %{}}}} = Config.get()
+  end
 end

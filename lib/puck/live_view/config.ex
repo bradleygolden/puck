@@ -11,9 +11,10 @@ defmodule Puck.LiveView.Config do
   end
 
   def get do
-    {:ok, :persistent_term.get(@key)}
-  rescue
-    ArgumentError -> {:error, :not_started}
+    case :persistent_term.get(@key, :not_found) do
+      :not_found -> {:error, :not_started}
+      config -> {:ok, config}
+    end
   end
 
   def delete do

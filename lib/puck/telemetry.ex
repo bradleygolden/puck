@@ -178,6 +178,48 @@ if Code.ensure_loaded?(:telemetry) do
       * `:strategy` - The compaction strategy module.
       * `:reason` - The error reason.
 
+    ### LiveView Stream Store Error
+
+    `[:puck, :live_view, :stream, :store_error]` — Emitted when the stream
+    GenServer fails to persist an error snapshot.
+
+    #### Measurements
+
+    No measurements.
+
+    #### Metadata
+
+      * `:stream_id` - The stream identifier.
+      * `:reason` - The store error reason.
+
+    ### LiveView Stream Callback Error
+
+    `[:puck, :live_view, :stream, :callback_error]` — Emitted when a user-supplied
+    stream callback raises an exception.
+
+    #### Measurements
+
+    No measurements.
+
+    #### Metadata
+
+      * `:exception` - The caught exception.
+      * `:stacktrace` - The stacktrace at the point of failure.
+      * `:callback` - The callback function that raised.
+
+    ### LiveView Sweeper Error
+
+    `[:puck, :live_view, :sweeper, :error]` — Emitted when the periodic sweep
+    fails.
+
+    #### Measurements
+
+    No measurements.
+
+    #### Metadata
+
+      * `:reason` - The sweep error reason.
+
     ## Attaching Handlers
 
         :telemetry.attach_many("my-handler", Puck.Telemetry.event_names(), &handler/4, nil)
@@ -210,7 +252,10 @@ if Code.ensure_loaded?(:telemetry) do
         [:puck, :backend, :response],
         [:puck, :compaction, :start],
         [:puck, :compaction, :stop],
-        [:puck, :compaction, :error]
+        [:puck, :compaction, :error],
+        [:puck, :live_view, :stream, :store_error],
+        [:puck, :live_view, :stream, :callback_error],
+        [:puck, :live_view, :sweeper, :error]
       ]
     end
 

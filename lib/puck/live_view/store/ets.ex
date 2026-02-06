@@ -2,8 +2,9 @@ defmodule Puck.LiveView.Store.ETS do
   @moduledoc """
   ETS-backed `Puck.LiveView.Store` implementation.
 
-  Snapshots are local to the current node. For multi-node deployments,
-  implement a custom `Puck.LiveView.Store`.
+  Use this default for single-node deployments. Snapshots are local to the
+  current node. For multi-node deployments, implement a custom
+  `Puck.LiveView.Store`.
   """
 
   @behaviour Puck.LiveView.Store
@@ -29,14 +30,14 @@ defmodule Puck.LiveView.Store.ETS do
     {:ok, %{session_table: session_table, registry: registry}}
   end
 
+  @doc false
   def put_stream(config, stream_id, snapshot) do
     session = Map.put(snapshot, :updated_at, now_ms())
     :ets.insert(config.session_table, {stream_id, session})
     :ok
-  rescue
-    e in ArgumentError -> {:error, e}
   end
 
+  @doc false
   def get_stream(config, stream_id) do
     case :ets.lookup(config.session_table, stream_id) do
       [{^stream_id, session}] -> {:ok, session}
@@ -46,13 +47,13 @@ defmodule Puck.LiveView.Store.ETS do
     e in ArgumentError -> {:error, e}
   end
 
+  @doc false
   def delete_stream(config, stream_id) do
     :ets.delete(config.session_table, stream_id)
     :ok
-  rescue
-    e in ArgumentError -> {:error, e}
   end
 
+  @doc false
   def sweep(config, opts) do
     now = now_ms()
     retention_ms = Keyword.get(opts, :retention_ms, 300_000)
