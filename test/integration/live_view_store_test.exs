@@ -1,11 +1,11 @@
-defmodule Puck.Integration.LiveViewStoreTest do
+defmodule Puck.LiveView.StoreTest do
   use ExUnit.Case, async: false
 
   alias Puck.Backends.Mock
   alias Puck.{Client, Context}
 
   @moduletag :integration
-  @pubsub Puck.Integration.LiveViewStoreTest.PubSub
+  @pubsub Puck.LiveView.StoreTest.PubSub
 
   defmodule InstrumentedStore do
     @behaviour Puck.LiveView.Store
