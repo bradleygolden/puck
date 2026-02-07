@@ -750,7 +750,6 @@ defmodule MyAppWeb.ChatLive do
     {:noreply, socket}
   end
 
-  # For structured output, chunk.content may be a struct instead of a string.
   def handle_info({:puck_stream, _id, {:content, chunk}}, socket) do
     {:noreply, assign(socket, content: socket.assigns.content <> chunk.content)}
   end
