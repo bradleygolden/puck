@@ -164,36 +164,17 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       {pubsub, opts} = Keyword.pop!(opts, :pubsub)
       {stream_id, opts} = Keyword.pop_lazy(opts, :stream_id, &generate_id/0)
       {name, opts} = Keyword.pop(opts, :name, __MODULE__)
-      {timeout, opts} = Keyword.pop(opts, :timeout)
+      {timeout, stream_opts} = Keyword.pop(opts, :timeout)
 
-      registry = Module.concat(name, Registry)
-      task_supervisor = Module.concat(name, TaskSupervisor)
-      dynamic_supervisor = Module.concat(name, DynamicSupervisor)
+      child_opts = [
+        client: client,
+        prompt: prompt,
+        context: context,
+        timeout: timeout,
+        stream_opts: stream_opts
+      ]
 
-      Phoenix.PubSub.subscribe(pubsub, topic(stream_id))
-
-      case DynamicSupervisor.start_child(
-             dynamic_supervisor,
-             {Puck.LiveView.Stream,
-              [
-                stream_id: stream_id,
-                pubsub: pubsub,
-                task_supervisor: task_supervisor,
-                registry: registry,
-                client: client,
-                prompt: prompt,
-                context: context,
-                timeout: timeout,
-                stream_opts: opts
-              ]}
-           ) do
-        {:ok, _pid} ->
-          {:ok, stream_id}
-
-        {:error, reason} ->
-          Phoenix.PubSub.unsubscribe(pubsub, topic(stream_id))
-          {:error, reason}
-      end
+      do_start_stream(child_opts, pubsub, stream_id, name)
     end
 
     @doc """
@@ -219,31 +200,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       {name, opts} = Keyword.pop(opts, :name, __MODULE__)
       {timeout, _opts} = Keyword.pop(opts, :timeout)
 
-      registry = Module.concat(name, Registry)
-      task_supervisor = Module.concat(name, TaskSupervisor)
-      dynamic_supervisor = Module.concat(name, DynamicSupervisor)
+      child_opts = [
+        fun: fun,
+        timeout: timeout
+      ]
 
-      Phoenix.PubSub.subscribe(pubsub, topic(stream_id))
-
-      case DynamicSupervisor.start_child(
-             dynamic_supervisor,
-             {Puck.LiveView.Stream,
-              [
-                stream_id: stream_id,
-                pubsub: pubsub,
-                task_supervisor: task_supervisor,
-                registry: registry,
-                fun: fun,
-                timeout: timeout
-              ]}
-           ) do
-        {:ok, _pid} ->
-          {:ok, stream_id}
-
-        {:error, reason} ->
-          Phoenix.PubSub.unsubscribe(pubsub, topic(stream_id))
-          {:error, reason}
-      end
+      do_start_stream(child_opts, pubsub, stream_id, name)
     end
 
     @doc """
@@ -295,6 +257,34 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     """
     def generate_id do
       Base.encode64(:crypto.strong_rand_bytes(16), padding: false)
+    end
+
+    defp do_start_stream(child_opts, pubsub, stream_id, name) do
+      registry = Module.concat(name, Registry)
+      task_supervisor = Module.concat(name, TaskSupervisor)
+      dynamic_supervisor = Module.concat(name, DynamicSupervisor)
+
+      Phoenix.PubSub.subscribe(pubsub, topic(stream_id))
+
+      child_opts =
+        Keyword.merge(child_opts,
+          stream_id: stream_id,
+          pubsub: pubsub,
+          task_supervisor: task_supervisor,
+          registry: registry
+        )
+
+      case DynamicSupervisor.start_child(
+             dynamic_supervisor,
+             {Puck.LiveView.Stream, child_opts}
+           ) do
+        {:ok, _pid} ->
+          {:ok, stream_id}
+
+        {:error, reason} ->
+          Phoenix.PubSub.unsubscribe(pubsub, topic(stream_id))
+          {:error, reason}
+      end
     end
   end
 end

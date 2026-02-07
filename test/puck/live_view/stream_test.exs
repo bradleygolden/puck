@@ -151,6 +151,18 @@ defmodule Puck.LiveView.StreamTest do
 
       assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
     end
+
+    test "finish_reason from last chunk propagates to Response" do
+      %{stream_id: id} =
+        start_fun_stream(fn parent ->
+          chunk = %{type: :content, content: "truncated", finish_reason: :max_tokens}
+          send(parent, {:stream_chunk, chunk})
+          {:stream_done, Context.new(), chunk}
+        end)
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert response.finish_reason == :max_tokens
+    end
   end
 
   describe "streaming" do

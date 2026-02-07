@@ -152,6 +152,15 @@ if Code.ensure_loaded?(:telemetry) do
         assert [:puck, :compaction, :stop] in names
         assert [:puck, :compaction, :error] in names
       end
+
+      test "includes live_view events" do
+        names = Puck.Telemetry.event_names()
+
+        assert [:puck, :live_view, :stream, :start] in names
+        assert [:puck, :live_view, :stream, :stop] in names
+        assert [:puck, :live_view, :stream, :error] in names
+        assert [:puck, :live_view, :stream, :cancel] in names
+      end
     end
 
     describe "attach_default_logger/1" do

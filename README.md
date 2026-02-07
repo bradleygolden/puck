@@ -662,6 +662,10 @@ Puck.Telemetry.attach_default_logger(level: :info)
 | `[:puck, :stream, :stop]` | After streaming completes |
 | `[:puck, :compaction, :start]` | Before compaction |
 | `[:puck, :compaction, :stop]` | After compaction |
+| `[:puck, :live_view, :stream, :start]` | Before LiveView stream |
+| `[:puck, :live_view, :stream, :stop]` | After LiveView stream completes |
+| `[:puck, :live_view, :stream, :error]` | LiveView stream failed |
+| `[:puck, :live_view, :stream, :cancel]` | LiveView stream cancelled |
 
 ## More Examples
 
@@ -738,7 +742,8 @@ defmodule MyAppWeb.ChatLive do
 
     {:ok, stream_id} =
       Puck.LiveView.start_stream(client, message, Puck.Context.new(),
-        pubsub: MyApp.PubSub
+        pubsub: MyApp.PubSub,
+        timeout: 30_000
       )
 
     {:noreply, assign(socket, stream_id: stream_id, content: "", status: :streaming)}
@@ -777,6 +782,30 @@ Messages arrive as `{:puck_stream, stream_id, event}` on the topic `"puck:stream
 | `{:done, response, context}` | Stream completed with `Puck.Response` and updated `Puck.Context` |
 | `{:error, reason}` | Stream failed |
 | `{:cancelled, content}` | Cancelled with accumulated content so far (string for text, struct for structured output) |
+
+### Custom Function Streaming
+
+When your streaming logic goes beyond a single LLM call — multi-turn loops,
+structured outputs via `Puck.call/4`, or custom orchestration — use
+`start_stream/2` with a function:
+
+```elixir
+{:ok, stream_id} =
+  Puck.LiveView.start_stream(
+    fn parent ->
+      {:ok, result} = Puck.call(client, prompt, context, output_schema: schema)
+      chunk = %{type: :content, content: result.content}
+      send(parent, {:stream_chunk, chunk})
+      {:stream_done, context, chunk}
+    end,
+    pubsub: MyApp.PubSub
+  )
+```
+
+The function receives the stream's parent PID. Send `{:stream_chunk, chunk}`
+messages during execution and return `{:stream_done, context, last_chunk}` or
+`{:error, reason}`. All lifecycle features (PubSub, cancellation, timeout,
+telemetry) work identically.
 
 ## Acknowledgments
 

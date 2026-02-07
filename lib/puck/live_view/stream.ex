@@ -118,24 +118,27 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       {:stop, :normal, state}
     end
 
+    def handle_info(
+          {:DOWN, ref, :process, _pid, _reason},
+          %{task_ref: ref, cancelled: true} = state
+        ) do
+      Telemetry.event([:live_view, :stream, :cancel], %{}, %{
+        stream_id: state.stream_id,
+        content: state.content
+      })
+
+      broadcast(state, {:cancelled, state.content})
+      {:stop, :normal, state}
+    end
+
     def handle_info({:DOWN, ref, :process, _pid, reason}, %{task_ref: ref} = state) do
-      if state.cancelled do
-        Telemetry.event([:live_view, :stream, :cancel], %{}, %{
-          stream_id: state.stream_id,
-          content: state.content
-        })
+      Telemetry.event([:live_view, :stream, :error], %{}, %{
+        stream_id: state.stream_id,
+        reason: reason
+      })
 
-        broadcast(state, {:cancelled, state.content})
-        {:stop, :normal, state}
-      else
-        Telemetry.event([:live_view, :stream, :error], %{}, %{
-          stream_id: state.stream_id,
-          reason: reason
-        })
-
-        broadcast(state, {:error, reason})
-        {:stop, :normal, state}
-      end
+      broadcast(state, {:error, reason})
+      {:stop, :normal, state}
     end
 
     def handle_info(:timeout, state) do
