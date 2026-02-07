@@ -6,8 +6,9 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     Starts a background stream task, subscribes the caller to PubSub, and
     broadcasts chunks as they arrive. Use `start_stream/4` with a client,
     prompt, and context for standard `Puck.stream/4` flows, or `start_stream/2`
-    with a custom function for full control over execution logic. Cancel with
-    `cancel/1`. You write your own `handle_info` clauses.
+    with a custom function for full control over execution logic. Check status
+    with `streaming?/1`, cancel with `cancel/1`. You write your own
+    `handle_info` clauses.
 
     ## Setup
 
@@ -243,6 +244,21 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
           Phoenix.PubSub.unsubscribe(pubsub, topic(stream_id))
           {:error, reason}
       end
+    end
+
+    @doc """
+    Returns whether a stream is currently active.
+
+    Checks the registry for a running stream process with the given ID.
+
+        if Puck.LiveView.streaming?(stream_id) do
+          # stream is still running
+        end
+
+    """
+    def streaming?(stream_id, name \\ __MODULE__) do
+      registry = Module.concat(name, Registry)
+      Registry.lookup(registry, stream_id) != []
     end
 
     @doc """

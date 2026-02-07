@@ -112,6 +112,19 @@ defmodule Puck.LiveView.StreamTest do
       assert response.content == "hello world"
     end
 
+    test "context returned from function is passed through unmodified" do
+      empty_context = Context.new()
+
+      %{stream_id: id} =
+        start_fun_stream(fn parent ->
+          send(parent, {:stream_chunk, %{type: :content, content: "hello"}})
+          {:stream_done, empty_context, %{type: :content, content: "hello"}}
+        end)
+
+      assert_receive {:puck_stream, ^id, {:done, _response, context}}, 1000
+      assert context == empty_context
+    end
+
     test "error from custom function broadcasts error" do
       %{stream_id: id} = start_fun_stream(fn _parent -> {:error, :custom_error} end)
 

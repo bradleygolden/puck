@@ -707,8 +707,8 @@ image_bytes = File.read!("photo.png")
 
 ## LiveView Integration
 
-Stream LLM responses into Phoenix LiveView. Two functions: `start_stream/4` to begin,
-`cancel/1` to stop. You write your own `handle_info` clauses.
+Stream LLM responses into Phoenix LiveView. Three functions: `start_stream/4` to begin,
+`streaming?/1` to check status, `cancel/1` to stop. You write your own `handle_info` clauses.
 
 Requires `{:phoenix_pubsub, "~> 2.1"}`.
 

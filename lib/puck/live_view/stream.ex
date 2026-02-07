@@ -97,17 +97,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
           metadata: metadata
         )
 
-      # Puck.stream/4 returns context with only the user message added.
-      # The assistant message must be added here with backend metadata.
-      final_context =
-        Context.add_message(result_context, :assistant, response.content, response.metadata)
-
       Telemetry.stop([:live_view, :stream], state.start_time, %{
         stream_id: state.stream_id,
         response: response
       })
 
-      broadcast(state, {:done, response, final_context})
+      broadcast(state, {:done, response, result_context})
       {:stop, :normal, state}
     end
 
@@ -151,18 +146,26 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     defp consume(parent, client, prompt, context, opts) do
       case Puck.stream(client, prompt, context, opts) do
         {:ok, stream, updated_context} ->
-          last_chunk =
-            Enum.reduce(stream, nil, fn chunk, _acc ->
+          {last_chunk, content} =
+            Enum.reduce(stream, {nil, ""}, fn chunk, {_prev, acc} ->
               send(parent, {:stream_chunk, chunk})
-              chunk
+              {chunk, accumulate_content(acc, chunk)}
             end)
 
-          {:stream_done, updated_context, last_chunk}
+          metadata = chunk_field(last_chunk, :metadata, %{})
+          final_context = Context.add_message(updated_context, :assistant, content, metadata)
+          {:stream_done, final_context, last_chunk}
 
         {:error, reason} ->
           {:error, reason}
       end
     end
+
+    defp accumulate_content(acc, %{type: :content, content: text}) when is_binary(text),
+      do: acc <> text
+
+    defp accumulate_content(_acc, %{type: :content, content: value}), do: value
+    defp accumulate_content(acc, _chunk), do: acc
 
     defp accumulate_chunk(state, %{type: :content, content: text}) when is_binary(text) do
       %{state | content: state.content <> text}

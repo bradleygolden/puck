@@ -214,6 +214,22 @@ defmodule Puck.LiveViewTest do
       assert response.content == "hello world"
     end
 
+    test "context returned from function is passed through unmodified" do
+      empty_context = Context.new()
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn parent ->
+            send(parent, {:stream_chunk, %{type: :content, content: "hi"}})
+            {:stream_done, empty_context, %{type: :content, content: "hi"}}
+          end,
+          pubsub: @pubsub
+        )
+
+      assert_receive {:puck_stream, ^id, {:done, _response, context}}, 1000
+      assert context == empty_context
+    end
+
     test "error from custom function broadcasts {:error, reason}" do
       {:ok, id} =
         Puck.LiveView.start_stream(
@@ -267,6 +283,35 @@ defmodule Puck.LiveViewTest do
 
     test "no-op when stream does not exist" do
       assert :ok = Puck.LiveView.cancel("nonexistent")
+    end
+  end
+
+  describe "streaming?/1" do
+    test "returns true during active stream" do
+      client = Client.new({Mock, response: "slow", delay: 500})
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      poll_until(fn -> Registry.lookup(Puck.LiveView.Registry, id) != [] end)
+      assert Puck.LiveView.streaming?(id)
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 2000
+    end
+
+    test "returns false after stream completes" do
+      client = Client.new({Mock, stream_chunks: ["a"]})
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+      poll_until(fn -> !Puck.LiveView.streaming?(id) end)
+      refute Puck.LiveView.streaming?(id)
+    end
+
+    test "returns false for unknown stream id" do
+      refute Puck.LiveView.streaming?("nonexistent")
     end
   end
 
