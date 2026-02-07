@@ -163,7 +163,8 @@ defmodule Puck.MixProject do
           Puck.Eval.Inspector
         ],
         LiveView: [
-          Puck.LiveView
+          Puck.LiveView,
+          Puck.LiveView.Handler
         ],
         Testing: [
           Puck.Test

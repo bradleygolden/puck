@@ -155,6 +155,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       - `:pubsub` - (required) PubSub module, e.g. `MyApp.PubSub`
       - `:stream_id` - Custom stream ID (auto-generated if omitted)
       - `:timeout` - Auto-cancel after this many milliseconds
+      - `:handler` - `{module, config}` implementing `Puck.LiveView.Handler`
       - `:name` - Supervisor name to use (default: `Puck.LiveView`)
 
     Remaining options are passed through to `Puck.stream/4`.
@@ -164,13 +165,15 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       {pubsub, opts} = Keyword.pop!(opts, :pubsub)
       {stream_id, opts} = Keyword.pop_lazy(opts, :stream_id, &generate_id/0)
       {name, opts} = Keyword.pop(opts, :name, __MODULE__)
-      {timeout, stream_opts} = Keyword.pop(opts, :timeout)
+      {timeout, opts} = Keyword.pop(opts, :timeout)
+      {handler, stream_opts} = Keyword.pop(opts, :handler)
 
       child_opts = [
         client: client,
         prompt: prompt,
         context: context,
         timeout: timeout,
+        handler: handler,
         stream_opts: stream_opts
       ]
 
@@ -191,6 +194,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       - `:pubsub` - (required) PubSub module, e.g. `MyApp.PubSub`
       - `:stream_id` - Custom stream ID (auto-generated if omitted)
       - `:timeout` - Auto-cancel after this many milliseconds
+      - `:handler` - `{module, config}` implementing `Puck.LiveView.Handler`
       - `:name` - Supervisor name to use (default: `Puck.LiveView`)
 
     """
@@ -198,11 +202,13 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       {pubsub, opts} = Keyword.pop!(opts, :pubsub)
       {stream_id, opts} = Keyword.pop_lazy(opts, :stream_id, &generate_id/0)
       {name, opts} = Keyword.pop(opts, :name, __MODULE__)
-      {timeout, _opts} = Keyword.pop(opts, :timeout)
+      {timeout, opts} = Keyword.pop(opts, :timeout)
+      {handler, _opts} = Keyword.pop(opts, :handler)
 
       child_opts = [
         fun: fun,
-        timeout: timeout
+        timeout: timeout,
+        handler: handler
       ]
 
       do_start_stream(child_opts, pubsub, stream_id, name)

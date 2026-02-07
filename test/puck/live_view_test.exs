@@ -265,6 +265,51 @@ defmodule Puck.LiveViewTest do
     end
   end
 
+  describe "handler option passthrough" do
+    defmodule TestHandler do
+      @behaviour Puck.LiveView.Handler
+
+      @impl true
+      def on_done(response, _context, %{agent: agent}) do
+        Agent.update(agent, fn _ -> {:called, response.content} end)
+        :ok
+      end
+    end
+
+    test "start_stream/4 passes handler to stream process" do
+      {:ok, agent} = Agent.start_link(fn -> nil end)
+      client = Client.new({Mock, stream_chunks: ["hi"]})
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(),
+          pubsub: @pubsub,
+          handler: {TestHandler, %{agent: agent}}
+        )
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+      poll_until(fn -> Agent.get(agent, & &1) != nil end)
+      assert {:called, "hi"} = Agent.get(agent, & &1)
+    end
+
+    test "start_stream/2 passes handler to stream process" do
+      {:ok, agent} = Agent.start_link(fn -> nil end)
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn parent ->
+            send(parent, {:stream_chunk, %{type: :content, content: "hello"}})
+            {:stream_done, Context.new(), %{type: :content, content: "hello"}}
+          end,
+          pubsub: @pubsub,
+          handler: {TestHandler, %{agent: agent}}
+        )
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+      poll_until(fn -> Agent.get(agent, & &1) != nil end)
+      assert {:called, "hello"} = Agent.get(agent, & &1)
+    end
+  end
+
   describe "cancel/1" do
     test "broadcasts {:cancelled, content} for active stream" do
       client = Client.new({Mock, response: "slow", delay: 500})

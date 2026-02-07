@@ -388,4 +388,300 @@ defmodule Puck.LiveView.StreamTest do
       assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
     end
   end
+
+  describe "handler" do
+    defmodule FullHandler do
+      @behaviour Puck.LiveView.Handler
+
+      @impl true
+      def on_chunk(chunk, %{agent: agent} = state) do
+        Agent.update(agent, fn calls -> [{:on_chunk, chunk} | calls] end)
+        {:cont, %{state | chunks: [chunk | Map.get(state, :chunks, [])]}}
+      end
+
+      @impl true
+      def on_done(response, context, %{agent: agent}) do
+        Agent.update(agent, fn calls -> [{:on_done, response, context} | calls] end)
+        :ok
+      end
+
+      @impl true
+      def on_error(reason, %{agent: agent}) do
+        Agent.update(agent, fn calls -> [{:on_error, reason} | calls] end)
+        :ok
+      end
+
+      @impl true
+      def on_cancel(content, %{agent: agent}) do
+        Agent.update(agent, fn calls -> [{:on_cancel, content} | calls] end)
+        :ok
+      end
+    end
+
+    defmodule DoneOnlyHandler do
+      @behaviour Puck.LiveView.Handler
+
+      @impl true
+      def on_done(response, _context, %{agent: agent}) do
+        Agent.update(agent, fn calls -> [{:on_done, response} | calls] end)
+        :ok
+      end
+    end
+
+    defmodule CrashingHandler do
+      @behaviour Puck.LiveView.Handler
+
+      @impl true
+      def on_chunk(_chunk, _state), do: raise("boom")
+
+      @impl true
+      def on_done(_response, _context, _state), do: raise("boom")
+    end
+
+    defp start_handler_stream(handler, opts \\ []) do
+      stream_id = Keyword.get_lazy(opts, :stream_id, &random_id/0)
+
+      client =
+        Keyword.get(opts, :client, Client.new({Mock, stream_chunks: ["hello", " ", "world"]}))
+
+      timeout = Keyword.get(opts, :timeout)
+
+      Phoenix.PubSub.subscribe(@pubsub, "puck:stream:#{stream_id}")
+
+      {:ok, pid} =
+        DynamicSupervisor.start_child(
+          Puck.LiveView.DynamicSupervisor,
+          {StreamServer,
+           [
+             stream_id: stream_id,
+             pubsub: @pubsub,
+             task_supervisor: Puck.LiveView.TaskSupervisor,
+             registry: Puck.LiveView.Registry,
+             client: client,
+             prompt: "test message",
+             context: Context.new(),
+             timeout: timeout,
+             handler: handler
+           ]}
+        )
+
+      %{stream_id: stream_id, pid: pid}
+    end
+
+    defp start_handler_fun_stream(fun, handler, opts \\ []) do
+      stream_id = Keyword.get_lazy(opts, :stream_id, &random_id/0)
+      timeout = Keyword.get(opts, :timeout)
+
+      Phoenix.PubSub.subscribe(@pubsub, "puck:stream:#{stream_id}")
+
+      {:ok, pid} =
+        DynamicSupervisor.start_child(
+          Puck.LiveView.DynamicSupervisor,
+          {StreamServer,
+           [
+             stream_id: stream_id,
+             pubsub: @pubsub,
+             task_supervisor: Puck.LiveView.TaskSupervisor,
+             registry: Puck.LiveView.Registry,
+             fun: fun,
+             timeout: timeout,
+             handler: handler
+           ]}
+        )
+
+      %{stream_id: stream_id, pid: pid}
+    end
+
+    defp poll_handler(agent, match_fn) do
+      poll_until(fn -> Enum.any?(Agent.get(agent, & &1), match_fn) end)
+      Agent.get(agent, & &1)
+    end
+
+    test "on_chunk receives each chunk and threads state" do
+      {:ok, agent} = Agent.start_link(fn -> [] end)
+      handler = {FullHandler, %{agent: agent, chunks: []}}
+
+      %{stream_id: id} = start_handler_stream(handler)
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+
+      calls = poll_handler(agent, &match?({:on_done, _, _}, &1))
+
+      chunk_calls = for {:on_chunk, _} <- calls, do: :ok
+      assert length(chunk_calls) == 3
+    end
+
+    test "on_done receives response and context" do
+      {:ok, agent} = Agent.start_link(fn -> [] end)
+      handler = {FullHandler, %{agent: agent, chunks: []}}
+
+      %{stream_id: id} = start_handler_stream(handler)
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+
+      calls = poll_handler(agent, &match?({:on_done, _, _}, &1))
+
+      assert Enum.any?(calls, fn
+               {:on_done, %Response{}, %Context{}} -> true
+               _ -> false
+             end)
+    end
+
+    test "on_error called on stream failure" do
+      {:ok, agent} = Agent.start_link(fn -> [] end)
+      handler = {FullHandler, %{agent: agent, chunks: []}}
+      client = Client.new({Mock, error: :rate_limited})
+
+      %{stream_id: id} = start_handler_stream(handler, client: client)
+
+      assert_receive {:puck_stream, ^id, {:error, :rate_limited}}, 1000
+
+      calls = poll_handler(agent, &match?({:on_error, _}, &1))
+
+      assert Enum.any?(calls, fn
+               {:on_error, :rate_limited} -> true
+               _ -> false
+             end)
+    end
+
+    test "on_error called on task crash" do
+      {:ok, agent} = Agent.start_link(fn -> [] end)
+      handler = {FullHandler, %{agent: agent, chunks: []}}
+
+      %{stream_id: id} =
+        start_handler_fun_stream(
+          fn _parent -> raise "task boom" end,
+          handler
+        )
+
+      assert_receive {:puck_stream, ^id, {:error, _}}, 1000
+
+      calls = poll_handler(agent, &match?({:on_error, _}, &1))
+
+      assert Enum.any?(calls, fn
+               {:on_error, {%RuntimeError{message: "task boom"}, _}} -> true
+               _ -> false
+             end)
+    end
+
+    test "on_cancel called on cancellation" do
+      {:ok, agent} = Agent.start_link(fn -> [] end)
+      handler = {FullHandler, %{agent: agent, chunks: []}}
+
+      %{stream_id: id} =
+        start_handler_fun_stream(
+          fn parent ->
+            send(parent, {:stream_chunk, %{type: :content, content: "partial"}})
+            Process.sleep(5000)
+          end,
+          handler
+        )
+
+      assert_receive {:puck_stream, ^id, {:content, _}}, 1000
+      poll_until(fn -> Registry.lookup(Puck.LiveView.Registry, id) != [] end)
+      StreamServer.cancel(Puck.LiveView.Registry, id)
+
+      assert_receive {:puck_stream, ^id, {:cancelled, "partial"}}, 1000
+
+      calls = poll_handler(agent, &match?({:on_cancel, _}, &1))
+
+      assert Enum.any?(calls, fn
+               {:on_cancel, "partial"} -> true
+               _ -> false
+             end)
+    end
+
+    test "on_cancel called on timeout" do
+      {:ok, agent} = Agent.start_link(fn -> [] end)
+      handler = {FullHandler, %{agent: agent, chunks: []}}
+
+      %{stream_id: id} =
+        start_handler_fun_stream(
+          fn _parent -> Process.sleep(5000) end,
+          handler,
+          timeout: 50
+        )
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+
+      calls = poll_handler(agent, &match?({:on_cancel, _}, &1))
+
+      assert Enum.any?(calls, &match?({:on_cancel, _}, &1))
+    end
+
+    test "optional callbacks — handler with only on_done works" do
+      {:ok, agent} = Agent.start_link(fn -> [] end)
+      handler = {DoneOnlyHandler, %{agent: agent}}
+
+      %{stream_id: id} = start_handler_stream(handler)
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+
+      calls = poll_handler(agent, &match?({:on_done, _}, &1))
+
+      assert Enum.any?(calls, fn
+               {:on_done, %Response{}} -> true
+               _ -> false
+             end)
+    end
+
+    test "handler crash doesn't kill stream" do
+      handler = {CrashingHandler, %{}}
+
+      %{stream_id: id} = start_handler_stream(handler)
+
+      assert_receive {:puck_stream, ^id, {:content, %{content: "hello"}}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, %{content: " "}}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, %{content: "world"}}}, 1000
+      assert_receive {:puck_stream, ^id, {:done, response, _}}, 1000
+      assert response.content == "hello world"
+    end
+
+    test "invalid handler format raises ArgumentError" do
+      Process.flag(:trap_exit, true)
+
+      assert {:error, {%ArgumentError{message: message}, _}} =
+               StreamServer.start_link(
+                 stream_id: random_id(),
+                 pubsub: @pubsub,
+                 task_supervisor: Puck.LiveView.TaskSupervisor,
+                 registry: Puck.LiveView.Registry,
+                 client: Client.new({Mock, stream_chunks: ["hello"]}),
+                 prompt: "test",
+                 context: Context.new(),
+                 handler: SomeModule
+               )
+
+      assert message =~ "expected :handler to be"
+    end
+
+    test "works with start_fun_stream path" do
+      {:ok, agent} = Agent.start_link(fn -> [] end)
+      handler = {FullHandler, %{agent: agent, chunks: []}}
+
+      %{stream_id: id} =
+        start_handler_fun_stream(
+          fn parent ->
+            for text <- ["a", "b"] do
+              send(parent, {:stream_chunk, %{type: :content, content: text}})
+            end
+
+            {:stream_done, Context.new(), %{type: :content, content: "b"}}
+          end,
+          handler
+        )
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+
+      calls = poll_handler(agent, &match?({:on_done, _, _}, &1))
+
+      chunk_calls = for {:on_chunk, _} <- calls, do: :ok
+      assert length(chunk_calls) == 2
+
+      assert Enum.any?(calls, fn
+               {:on_done, %Response{}, %Context{}} -> true
+               _ -> false
+             end)
+    end
+  end
 end

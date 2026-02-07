@@ -234,6 +234,22 @@ if Code.ensure_loaded?(:telemetry) do
       * `:stream_id` - The stream identifier.
       * `:content` - The accumulated content at cancellation.
 
+    ### LiveView Stream Handler Error
+
+    `[:puck, :live_view, :stream, :handler_error]` — Emitted when a
+    `Puck.LiveView.Handler` callback raises.
+
+    #### Measurements
+
+    No measurements.
+
+    #### Metadata
+
+      * `:stream_id` - The stream identifier.
+      * `:handler` - The handler module.
+      * `:callback` - The callback that raised (e.g. `:on_chunk`, `:on_done`).
+      * `:reason` - The exception.
+
     ## Attaching Handlers
 
         :telemetry.attach_many("my-handler", Puck.Telemetry.event_names(), &handler/4, nil)
@@ -270,7 +286,8 @@ if Code.ensure_loaded?(:telemetry) do
         [:puck, :live_view, :stream, :start],
         [:puck, :live_view, :stream, :stop],
         [:puck, :live_view, :stream, :error],
-        [:puck, :live_view, :stream, :cancel]
+        [:puck, :live_view, :stream, :cancel],
+        [:puck, :live_view, :stream, :handler_error]
       ]
     end
 

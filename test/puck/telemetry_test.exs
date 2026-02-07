@@ -131,6 +131,179 @@ if Code.ensure_loaded?(:telemetry) do
       end
     end
 
+    describe "live_view stream events" do
+      setup do
+        EventTracker.start()
+
+        handler_id = "test-lv-handler-#{:erlang.unique_integer()}"
+
+        :telemetry.attach_many(
+          handler_id,
+          Puck.Telemetry.event_names(),
+          fn event, measurements, metadata, _config ->
+            EventTracker.record(event, measurements, metadata)
+          end,
+          nil
+        )
+
+        start_supervised!({Phoenix.PubSub, name: Puck.TelemetryTest.PubSub})
+        start_supervised!(Puck.LiveView)
+
+        on_exit(fn ->
+          :telemetry.detach(handler_id)
+        end)
+
+        :ok
+      end
+
+      defp start_telemetry_stream(opts \\ []) do
+        stream_id = "telemetry-test-#{:erlang.unique_integer([:positive])}"
+        pubsub = Puck.TelemetryTest.PubSub
+
+        client =
+          Keyword.get(opts, :client, Client.new({Puck.Backends.Mock, stream_chunks: ["hi"]}))
+
+        handler = Keyword.get(opts, :handler)
+
+        Phoenix.PubSub.subscribe(pubsub, "puck:stream:#{stream_id}")
+
+        child_opts =
+          [
+            stream_id: stream_id,
+            pubsub: pubsub,
+            task_supervisor: Puck.LiveView.TaskSupervisor,
+            registry: Puck.LiveView.Registry,
+            client: client,
+            prompt: "test",
+            context: Context.new()
+          ] ++ if(handler, do: [handler: handler], else: [])
+
+        {:ok, _pid} =
+          DynamicSupervisor.start_child(
+            Puck.LiveView.DynamicSupervisor,
+            {Puck.LiveView.Stream, child_opts}
+          )
+
+        stream_id
+      end
+
+      defp start_telemetry_fun_stream(fun, opts \\ []) do
+        stream_id = "telemetry-test-#{:erlang.unique_integer([:positive])}"
+        pubsub = Puck.TelemetryTest.PubSub
+        handler = Keyword.get(opts, :handler)
+
+        Phoenix.PubSub.subscribe(pubsub, "puck:stream:#{stream_id}")
+
+        child_opts =
+          [
+            stream_id: stream_id,
+            pubsub: pubsub,
+            task_supervisor: Puck.LiveView.TaskSupervisor,
+            registry: Puck.LiveView.Registry,
+            fun: fun
+          ] ++ if(handler, do: [handler: handler], else: [])
+
+        {:ok, _pid} =
+          DynamicSupervisor.start_child(
+            Puck.LiveView.DynamicSupervisor,
+            {Puck.LiveView.Stream, child_opts}
+          )
+
+        stream_id
+      end
+
+      test "start and stop events fire on successful stream" do
+        id = start_telemetry_stream()
+
+        assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+
+        assert EventTracker.has_event?([:puck, :live_view, :stream, :start])
+        assert EventTracker.has_event?([:puck, :live_view, :stream, :stop])
+
+        {_, measurements, metadata} = EventTracker.get_event([:puck, :live_view, :stream, :stop])
+        assert is_integer(measurements.duration)
+        assert metadata.stream_id == id
+      end
+
+      test "error event fires on backend failure" do
+        client = Client.new({Puck.Backends.Mock, error: :rate_limited})
+        id = start_telemetry_stream(client: client)
+
+        assert_receive {:puck_stream, ^id, {:error, :rate_limited}}, 1000
+
+        assert EventTracker.has_event?([:puck, :live_view, :stream, :error])
+
+        {_, _measurements, metadata} =
+          EventTracker.get_event([:puck, :live_view, :stream, :error])
+
+        assert metadata.stream_id == id
+        assert metadata.reason == :rate_limited
+      end
+
+      test "cancel event fires on cancellation" do
+        id =
+          start_telemetry_fun_stream(fn parent ->
+            send(parent, {:stream_chunk, %{type: :content, content: "partial"}})
+            Process.sleep(5000)
+          end)
+
+        assert_receive {:puck_stream, ^id, {:content, _}}, 1000
+
+        poll_until = fn fun ->
+          deadline = System.monotonic_time(:millisecond) + 500
+
+          Stream.repeatedly(fn ->
+            if fun.(), do: :ok, else: Process.sleep(1)
+          end)
+          |> Enum.reduce_while(nil, fn _, _ ->
+            if fun.() do
+              {:halt, :ok}
+            else
+              if System.monotonic_time(:millisecond) > deadline, do: raise("poll timed out")
+              {:cont, nil}
+            end
+          end)
+        end
+
+        poll_until.(fn -> Registry.lookup(Puck.LiveView.Registry, id) != [] end)
+        Puck.LiveView.Stream.cancel(Puck.LiveView.Registry, id)
+
+        assert_receive {:puck_stream, ^id, {:cancelled, "partial"}}, 1000
+
+        assert EventTracker.has_event?([:puck, :live_view, :stream, :cancel])
+
+        {_, _measurements, metadata} =
+          EventTracker.get_event([:puck, :live_view, :stream, :cancel])
+
+        assert metadata.stream_id == id
+        assert metadata.content == "partial"
+      end
+
+      test "handler_error event fires when handler crashes" do
+        defmodule TelemetryCrashingHandler do
+          @behaviour Puck.LiveView.Handler
+
+          @impl true
+          def on_done(_response, _context, _state), do: raise("handler boom")
+        end
+
+        id = start_telemetry_stream(handler: {TelemetryCrashingHandler, %{}})
+
+        assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+        Process.sleep(50)
+
+        assert EventTracker.has_event?([:puck, :live_view, :stream, :handler_error])
+
+        {_, _measurements, metadata} =
+          EventTracker.get_event([:puck, :live_view, :stream, :handler_error])
+
+        assert metadata.stream_id == id
+        assert metadata.handler == TelemetryCrashingHandler
+        assert metadata.callback == :on_done
+        assert %RuntimeError{message: "handler boom"} = metadata.reason
+      end
+    end
+
     describe "Puck.Telemetry.event_names/0" do
       test "returns all event names" do
         names = Puck.Telemetry.event_names()
@@ -160,6 +333,7 @@ if Code.ensure_loaded?(:telemetry) do
         assert [:puck, :live_view, :stream, :stop] in names
         assert [:puck, :live_view, :stream, :error] in names
         assert [:puck, :live_view, :stream, :cancel] in names
+        assert [:puck, :live_view, :stream, :handler_error] in names
       end
     end
 

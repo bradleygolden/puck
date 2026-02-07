@@ -2,7 +2,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
   defmodule Puck.LiveView.Stream do
     @moduledoc false
 
-    use GenServer
+    use GenServer, restart: :temporary
 
     alias Puck.{Context, Response}
     alias Puck.Runtime.Telemetry
@@ -26,6 +26,19 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       pubsub = Keyword.fetch!(opts, :pubsub)
       task_supervisor = Keyword.fetch!(opts, :task_supervisor)
       timeout = Keyword.get(opts, :timeout)
+
+      handler =
+        case Keyword.get(opts, :handler) do
+          {module, config} ->
+            {module, config}
+
+          nil ->
+            nil
+
+          other ->
+            raise ArgumentError,
+                  "expected :handler to be {module, config}, got: #{inspect(other)}"
+        end
 
       me = self()
 
@@ -62,7 +75,8 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         task_ref: task.ref,
         task_pid: task.pid,
         cancelled: false,
-        start_time: start_time
+        start_time: start_time,
+        handler: handler
       }
 
       {:ok, state}
@@ -78,6 +92,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     def handle_info({:stream_chunk, chunk}, state) do
       state = accumulate_chunk(state, chunk)
       broadcast(state, {chunk_type(chunk), chunk})
+      state = invoke_handler(:on_chunk, [chunk], state)
       {:noreply, state}
     end
 
@@ -103,6 +118,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       })
 
       broadcast(state, {:done, response, result_context})
+      invoke_handler(:on_done, [response, result_context], state)
       {:stop, :normal, state}
     end
 
@@ -115,6 +131,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       })
 
       broadcast(state, {:error, reason})
+      invoke_handler(:on_error, [reason], state)
       {:stop, :normal, state}
     end
 
@@ -128,6 +145,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       })
 
       broadcast(state, {:cancelled, state.content})
+      invoke_handler(:on_cancel, [state.content], state)
       {:stop, :normal, state}
     end
 
@@ -138,6 +156,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       })
 
       broadcast(state, {:error, reason})
+      invoke_handler(:on_error, [reason], state)
       {:stop, :normal, state}
     end
 
@@ -185,6 +204,54 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
 
     defp chunk_field(nil, _key, default), do: default
     defp chunk_field(chunk, key, default), do: Map.get(chunk, key, default)
+
+    defp invoke_handler(_callback, _args, %{handler: nil} = state), do: state
+
+    defp invoke_handler(:on_chunk, args, %{handler: {module, handler_state}} = state) do
+      if function_exported?(module, :on_chunk, 2) do
+        try do
+          case apply(module, :on_chunk, args ++ [handler_state]) do
+            {:cont, new_handler_state} ->
+              %{state | handler: {module, new_handler_state}}
+
+            _other ->
+              state
+          end
+        rescue
+          e ->
+            Telemetry.event([:live_view, :stream, :handler_error], %{}, %{
+              stream_id: state.stream_id,
+              handler: module,
+              callback: :on_chunk,
+              reason: e
+            })
+
+            state
+        end
+      else
+        state
+      end
+    end
+
+    defp invoke_handler(callback, args, %{handler: {module, handler_state}} = state) do
+      arity = length(args) + 1
+
+      if function_exported?(module, callback, arity) do
+        try do
+          apply(module, callback, args ++ [handler_state])
+        rescue
+          e ->
+            Telemetry.event([:live_view, :stream, :handler_error], %{}, %{
+              stream_id: state.stream_id,
+              handler: module,
+              callback: callback,
+              reason: e
+            })
+        end
+      end
+
+      state
+    end
 
     defp broadcast(state, event) do
       Phoenix.PubSub.broadcast(

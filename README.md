@@ -710,8 +710,9 @@ image_bytes = File.read!("photo.png")
 
 ## LiveView Integration
 
-Stream LLM responses into Phoenix LiveView. Three functions: `start_stream/4` to begin,
-`streaming?/1` to check status, `cancel/1` to stop. You write your own `handle_info` clauses.
+Stream LLM responses into Phoenix LiveView. `start_stream/4` to begin,
+`streaming?/1` to check status, `cancel/1` to stop, `unsubscribe/2` to
+clean up. You write your own `handle_info` clauses.
 
 Requires `{:phoenix_pubsub, "~> 2.1"}`.
 
@@ -806,6 +807,34 @@ The function receives the stream's parent PID. Send `{:stream_chunk, chunk}`
 messages during execution and return `{:stream_done, context, last_chunk}` or
 `{:error, reason}`. All lifecycle features (PubSub, cancellation, timeout,
 telemetry) work identically.
+
+### Handler
+
+The stream GenServer survives LiveView disconnects. Use a handler to run
+persistence logic inside the stream process — if the LiveView disconnects
+mid-stream, the handler still fires:
+
+```elixir
+defmodule MyApp.ChatPersistence do
+  @behaviour Puck.LiveView.Handler
+
+  @impl true
+  def on_done(response, _context, %{conversation_id: id}) do
+    MyApp.Conversations.save_message(id, response.content)
+    :ok
+  end
+end
+
+{:ok, stream_id} =
+  Puck.LiveView.start_stream(client, prompt, context,
+    pubsub: MyApp.PubSub,
+    handler: {MyApp.ChatPersistence, %{conversation_id: id}}
+  )
+```
+
+The config map doubles as the initial handler state. All four callbacks are
+optional — implement only what you need. See `Puck.LiveView.Handler` for the
+full callback list.
 
 ## Acknowledgments
 
