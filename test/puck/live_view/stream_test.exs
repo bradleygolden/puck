@@ -277,6 +277,84 @@ defmodule Puck.LiveView.StreamTest do
     end
   end
 
+  describe "structured output" do
+    defmodule Person do
+      @moduledoc false
+      defstruct [:name, :age]
+    end
+
+    defp person_schema do
+      Zoi.struct(
+        Person,
+        %{
+          name: Zoi.string(),
+          age: Zoi.integer()
+        },
+        coerce: true
+      )
+    end
+
+    test "start_stream/4 with output_schema parses chunks into structs" do
+      client =
+        Client.new(
+          {Mock,
+           stream_chunks: [
+             ~s|{"name":"Alice","age":30}|,
+             ~s|{"name":"Alice","age":30}|
+           ]}
+        )
+
+      %{stream_id: id} =
+        start_stream(client: client, stream_opts: [output_schema: person_schema()])
+
+      assert_receive {:puck_stream, ^id, {:content, %{content: %Person{name: "Alice", age: 30}}}},
+                     1000
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert %Person{name: "Alice", age: 30} = response.content
+    end
+
+    test "custom function sending struct chunks accumulates to last struct" do
+      %{stream_id: id} =
+        start_fun_stream(fn parent ->
+          send(
+            parent,
+            {:stream_chunk, %{type: :content, content: %Person{name: "Alice", age: 30}}}
+          )
+
+          send(
+            parent,
+            {:stream_chunk, %{type: :content, content: %Person{name: "Bob", age: 25}}}
+          )
+
+          {:stream_done, Context.new(), %{type: :content, content: %Person{name: "Bob", age: 25}}}
+        end)
+
+      assert_receive {:puck_stream, ^id, {:content, %{content: %Person{name: "Alice"}}}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, %{content: %Person{name: "Bob"}}}}, 1000
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert %Person{name: "Bob", age: 25} = response.content
+    end
+
+    test "cancel with struct content returns accumulated struct" do
+      %{stream_id: id} =
+        start_fun_stream(fn parent ->
+          send(
+            parent,
+            {:stream_chunk, %{type: :content, content: %Person{name: "Alice", age: 30}}}
+          )
+
+          Process.sleep(5000)
+        end)
+
+      assert_receive {:puck_stream, ^id, {:content, %{content: %Person{name: "Alice"}}}}, 1000
+      poll_until(fn -> Registry.lookup(Puck.LiveView.Registry, id) != [] end)
+      StreamServer.cancel(Puck.LiveView.Registry, id)
+
+      assert_receive {:puck_stream, ^id, {:cancelled, %Person{name: "Alice", age: 30}}}, 1000
+    end
+  end
+
   describe "registration" do
     test "registers in Registry by stream_id" do
       %{stream_id: id, pid: pid} = start_stream()

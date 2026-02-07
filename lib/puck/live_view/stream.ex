@@ -164,8 +164,12 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       end
     end
 
-    defp accumulate_chunk(state, %{type: :content, content: text}) do
-      %{state | content: state.content <> to_string(text)}
+    defp accumulate_chunk(state, %{type: :content, content: text}) when is_binary(text) do
+      %{state | content: state.content <> text}
+    end
+
+    defp accumulate_chunk(state, %{type: :content, content: value}) do
+      %{state | content: value}
     end
 
     defp accumulate_chunk(state, _chunk), do: state

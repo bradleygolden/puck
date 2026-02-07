@@ -134,6 +134,47 @@ defmodule Puck.LiveViewTest do
     end
   end
 
+  describe "start_stream/4 with output_schema" do
+    defmodule Person do
+      @moduledoc false
+      defstruct [:name, :age]
+    end
+
+    defp person_schema do
+      Zoi.struct(
+        Person,
+        %{
+          name: Zoi.string(),
+          age: Zoi.integer()
+        },
+        coerce: true
+      )
+    end
+
+    test "parses chunks into structs and accumulates final struct" do
+      client =
+        Client.new(
+          {Mock,
+           stream_chunks: [
+             ~s|{"name":"Alice","age":30}|,
+             ~s|{"name":"Alice","age":30}|
+           ]}
+        )
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(),
+          pubsub: @pubsub,
+          output_schema: person_schema()
+        )
+
+      assert_receive {:puck_stream, ^id, {:content, %{content: %Person{name: "Alice", age: 30}}}},
+                     1000
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert %Person{name: "Alice", age: 30} = response.content
+    end
+  end
+
   describe "start_stream/2" do
     test "returns {:ok, stream_id} and delivers chunks + done messages" do
       {:ok, stream_id} =
