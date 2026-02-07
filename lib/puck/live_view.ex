@@ -76,7 +76,7 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     | `{:thinking, chunk}` | Thinking chunk map |
     | `{:done, response, context}` | Stream completed with `Puck.Response` and updated `Puck.Context` |
     | `{:error, reason}` | Stream failed |
-    | `{:cancelled, content}` | Cancelled with accumulated content so far |
+    | `{:cancelled, content}` | Cancelled with accumulated content so far (string for text, struct for structured output) |
 
     Chunk events use the chunk's own `:type` as the PubSub tag. Content chunks
     arrive as `{:content, chunk}`, thinking as `{:thinking, chunk}`, and any

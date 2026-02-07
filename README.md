@@ -750,6 +750,7 @@ defmodule MyAppWeb.ChatLive do
     {:noreply, socket}
   end
 
+  # For structured output, chunk.content may be a struct instead of a string.
   def handle_info({:puck_stream, _id, {:content, chunk}}, socket) do
     {:noreply, assign(socket, content: socket.assigns.content <> chunk.content)}
   end
@@ -777,7 +778,7 @@ Messages arrive as `{:puck_stream, stream_id, event}` on the topic `"puck:stream
 | `{:thinking, chunk}` | Thinking chunk map |
 | `{:done, response, context}` | Stream completed with `Puck.Response` and updated `Puck.Context` |
 | `{:error, reason}` | Stream failed |
-| `{:cancelled, content}` | Cancelled with accumulated content so far |
+| `{:cancelled, content}` | Cancelled with accumulated content so far (string for text, struct for structured output) |
 
 ## Acknowledgments
 
