@@ -117,10 +117,11 @@ def deps do
     {:claude_agent_sdk, "~> 0.8"}, # Claude Code with subscription auth
 
     # Optional features
-    {:solid, "~> 0.15"},        # Liquid template syntax
-    {:telemetry, "~> 1.2"},     # Observability
-    {:zoi, "~> 0.7"},           # Schema validation for structured outputs
-    {:lua, "~> 0.4.0"}          # Lua sandbox for code execution
+    {:solid, "~> 0.15"},           # Liquid template syntax
+    {:telemetry, "~> 1.2"},        # Observability
+    {:zoi, "~> 0.7"},              # Schema validation for structured outputs
+    {:lua, "~> 0.4.0"},            # Lua sandbox for code execution
+    {:phoenix_pubsub, "~> 2.1"}    # LiveView streaming integration
   ]
 end
 ```
@@ -661,6 +662,10 @@ Puck.Telemetry.attach_default_logger(level: :info)
 | `[:puck, :stream, :stop]` | After streaming completes |
 | `[:puck, :compaction, :start]` | Before compaction |
 | `[:puck, :compaction, :stop]` | After compaction |
+| `[:puck, :live_view, :stream, :start]` | Before LiveView stream |
+| `[:puck, :live_view, :stream, :stop]` | After LiveView stream completes |
+| `[:puck, :live_view, :stream, :error]` | LiveView stream failed |
+| `[:puck, :live_view, :stream, :cancel]` | LiveView stream cancelled |
 
 ## More Examples
 
@@ -702,6 +707,134 @@ image_bytes = File.read!("photo.png")
   %{role: :user, content: "Translate: Goodbye"}
 ])
 ```
+
+## LiveView Integration
+
+Stream LLM responses into Phoenix LiveView. `start_stream/4` to begin,
+`streaming?/1` to check status, `cancel/1` to stop, `unsubscribe/2` to
+clean up. You write your own `handle_info` clauses.
+
+Requires `{:phoenix_pubsub, "~> 2.1"}`.
+
+### Setup
+
+```elixir
+# application.ex
+children = [
+  Puck.LiveView
+]
+```
+
+### Streaming to a LiveView
+
+```elixir
+defmodule MyAppWeb.ChatLive do
+  use MyAppWeb, :live_view
+
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, content: "", status: :idle, stream_id: nil)}
+  end
+
+  def handle_event("send", %{"message" => message}, socket) do
+    client = Puck.Client.new(
+      {Puck.Backends.ReqLLM, "anthropic:claude-sonnet-4-5"},
+      system_prompt: "You are a helpful assistant."
+    )
+
+    {:ok, stream_id} =
+      Puck.LiveView.start_stream(client, message, Puck.Context.new(),
+        pubsub: MyApp.PubSub,
+        timeout: 30_000
+      )
+
+    {:noreply, assign(socket, stream_id: stream_id, content: "", status: :streaming)}
+  end
+
+  def handle_event("cancel", _params, socket) do
+    Puck.LiveView.cancel(socket.assigns.stream_id)
+    {:noreply, socket}
+  end
+
+  def handle_info({:puck_stream, _id, {:content, chunk}}, socket) do
+    {:noreply, assign(socket, content: socket.assigns.content <> chunk.content)}
+  end
+
+  def handle_info({:puck_stream, id, {:done, _response, _context}}, socket) do
+    Puck.LiveView.unsubscribe(id, pubsub: MyApp.PubSub)
+    {:noreply, assign(socket, status: :done)}
+  end
+
+  def handle_info({:puck_stream, _id, {:error, _reason}}, socket) do
+    {:noreply, assign(socket, status: :error)}
+  end
+
+  def handle_info({:puck_stream, _id, {:cancelled, _content}}, socket) do
+    {:noreply, assign(socket, status: :cancelled)}
+  end
+end
+```
+
+Messages arrive as `{:puck_stream, stream_id, event}` on the topic `"puck:stream:<stream_id>"`:
+
+| Event | Description |
+|-------|-------------|
+| `{:content, chunk}` | Content chunk map (use `chunk.content` for text) |
+| `{:thinking, chunk}` | Thinking chunk map |
+| `{:done, response, context}` | Stream completed with `Puck.Response` and updated `Puck.Context` |
+| `{:error, reason}` | Stream failed |
+| `{:cancelled, content}` | Cancelled with accumulated content so far (string for text, struct for structured output) |
+
+### Custom Function Streaming
+
+When your streaming logic goes beyond a single LLM call — multi-turn loops,
+structured outputs via `Puck.call/4`, or custom orchestration — use
+`start_stream/2` with a function:
+
+```elixir
+{:ok, stream_id} =
+  Puck.LiveView.start_stream(
+    fn parent ->
+      {:ok, result} = Puck.call(client, prompt, context, output_schema: schema)
+      chunk = %{type: :content, content: result.content}
+      send(parent, {:stream_chunk, chunk})
+      {:stream_done, context, chunk}
+    end,
+    pubsub: MyApp.PubSub
+  )
+```
+
+The function receives the stream's parent PID. Send `{:stream_chunk, chunk}`
+messages during execution and return `{:stream_done, context, last_chunk}` or
+`{:error, reason}`. All lifecycle features (PubSub, cancellation, timeout,
+telemetry) work identically.
+
+### Handler
+
+The stream GenServer survives LiveView disconnects. Use a handler to run
+persistence logic inside the stream process — if the LiveView disconnects
+mid-stream, the handler still fires:
+
+```elixir
+defmodule MyApp.ChatPersistence do
+  @behaviour Puck.LiveView.Handler
+
+  @impl true
+  def on_done(response, _context, %{conversation_id: id}) do
+    MyApp.Conversations.save_message(id, response.content)
+    :ok
+  end
+end
+
+{:ok, stream_id} =
+  Puck.LiveView.start_stream(client, prompt, context,
+    pubsub: MyApp.PubSub,
+    handler: {MyApp.ChatPersistence, %{conversation_id: id}}
+  )
+```
+
+The config map doubles as the initial handler state. All four callbacks are
+optional — implement only what you need. See `Puck.LiveView.Handler` for the
+full callback list.
 
 ## Acknowledgments
 

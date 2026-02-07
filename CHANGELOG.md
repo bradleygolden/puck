@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Puck.LiveView` — Stream LLM responses into Phoenix LiveView with PubSub, cancellation, and timeout
+- Custom function streaming via `start_stream/2` for multi-turn loops and structured output orchestration
+- `Puck.LiveView.Handler` behaviour for pluggable persistence in the stream process
+- LiveView telemetry events for stream lifecycle monitoring
+
 ## [0.2.11] - 2026-02-06
 
 ### Fixed

@@ -1,0 +1,391 @@
+defmodule Puck.LiveViewTest do
+  use ExUnit.Case, async: false
+
+  alias Puck.Backends.Mock
+  alias Puck.{Client, Context, Response}
+
+  @pubsub Puck.LiveViewTest.PubSub
+
+  setup do
+    start_supervised!({Phoenix.PubSub, name: @pubsub})
+    start_supervised!(Puck.LiveView)
+    flush_mailbox()
+    :ok
+  end
+
+  defp flush_mailbox do
+    receive do
+      _ -> flush_mailbox()
+    after
+      0 -> :ok
+    end
+  end
+
+  describe "start_stream/4" do
+    test "returns {:ok, stream_id} and delivers content + done messages" do
+      client = Client.new({Mock, stream_chunks: ["hello", " ", "world"]})
+
+      {:ok, stream_id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      assert is_binary(stream_id)
+
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: "hello"}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: " "}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: "world"}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:done, %Response{}, %Context{}}}, 1000
+    end
+
+    test "chunks include backend metadata" do
+      client = Client.new({Mock, stream_chunks: ["hi"]})
+
+      {:ok, id} = Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      assert_receive {:puck_stream, ^id, {:content, chunk}}, 1000
+      assert chunk.type == :content
+      assert chunk.content == "hi"
+      assert chunk.metadata == %{partial: true, backend: :mock}
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+    end
+
+    test "accepts custom :stream_id" do
+      client = Client.new({Mock, stream_chunks: ["a"]})
+
+      {:ok, "custom-123"} =
+        Puck.LiveView.start_stream(client, "test", Context.new(),
+          pubsub: @pubsub,
+          stream_id: "custom-123"
+        )
+
+      assert_receive {:puck_stream, "custom-123", {:done, _, _}}, 1000
+    end
+
+    test "done message includes Response with accumulated content" do
+      client = Client.new({Mock, stream_chunks: ["hello", " ", "world"]})
+
+      {:ok, id} = Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert response.content == "hello world"
+      assert response.finish_reason == :stop
+    end
+
+    test "done message includes metadata from last chunk" do
+      client = Client.new({Mock, stream_chunks: ["hi"]})
+
+      {:ok, id} = Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert response.metadata == %{partial: true, backend: :mock}
+    end
+
+    test "done message includes updated context with assistant message" do
+      client = Client.new({Mock, stream_chunks: ["hi"]})
+      ctx = Context.new()
+
+      {:ok, id} = Puck.LiveView.start_stream(client, "test", ctx, pubsub: @pubsub)
+
+      assert_receive {:puck_stream, ^id, {:done, _response, context}}, 1000
+      assert context.messages != []
+    end
+
+    test "backend error broadcasts {:error, reason}" do
+      client = Client.new({Mock, error: :rate_limited})
+
+      {:ok, id} = Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      assert_receive {:puck_stream, ^id, {:error, :rate_limited}}, 1000
+    end
+
+    test "multiple concurrent streams" do
+      client1 = Client.new({Mock, stream_chunks: ["one"]})
+      client2 = Client.new({Mock, stream_chunks: ["two"]})
+
+      {:ok, id1} = Puck.LiveView.start_stream(client1, "test", Context.new(), pubsub: @pubsub)
+      {:ok, id2} = Puck.LiveView.start_stream(client2, "test", Context.new(), pubsub: @pubsub)
+
+      assert id1 != id2
+
+      assert_receive {:puck_stream, ^id1, {:done, r1, _}}, 1000
+      assert_receive {:puck_stream, ^id2, {:done, r2, _}}, 1000
+
+      assert r1.content == "one"
+      assert r2.content == "two"
+    end
+
+    test "raises on missing :pubsub" do
+      client = Client.new({Mock, stream_chunks: ["a"]})
+
+      assert_raise KeyError, ~r/:pubsub/, fn ->
+        Puck.LiveView.start_stream(client, "test", Context.new(), [])
+      end
+    end
+
+    test "timeout auto-cancels the stream" do
+      client = Client.new({Mock, response: "slow", delay: 2000})
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(),
+          pubsub: @pubsub,
+          timeout: 50
+        )
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+    end
+  end
+
+  describe "start_stream/4 with output_schema" do
+    defmodule Person do
+      @moduledoc false
+      defstruct [:name, :age]
+    end
+
+    defp person_schema do
+      Zoi.struct(
+        Person,
+        %{
+          name: Zoi.string(),
+          age: Zoi.integer()
+        },
+        coerce: true
+      )
+    end
+
+    test "parses chunks into structs and accumulates final struct" do
+      client =
+        Client.new(
+          {Mock,
+           stream_chunks: [
+             ~s|{"name":"Alice","age":30}|,
+             ~s|{"name":"Alice","age":30}|
+           ]}
+        )
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(),
+          pubsub: @pubsub,
+          output_schema: person_schema()
+        )
+
+      assert_receive {:puck_stream, ^id, {:content, %{content: %Person{name: "Alice", age: 30}}}},
+                     1000
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert %Person{name: "Alice", age: 30} = response.content
+    end
+  end
+
+  describe "start_stream/2" do
+    test "returns {:ok, stream_id} and delivers chunks + done messages" do
+      {:ok, stream_id} =
+        Puck.LiveView.start_stream(
+          fn parent ->
+            for text <- ["hello", " ", "world"] do
+              send(parent, {:stream_chunk, %{type: :content, content: text}})
+            end
+
+            {:stream_done, Context.new(), %{type: :content, content: "world"}}
+          end,
+          pubsub: @pubsub
+        )
+
+      assert is_binary(stream_id)
+
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: "hello"}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: " "}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: "world"}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:done, %Response{}, %Context{}}}, 1000
+    end
+
+    test "done message includes accumulated content" do
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn parent ->
+            for text <- ["hello", " ", "world"] do
+              send(parent, {:stream_chunk, %{type: :content, content: text}})
+            end
+
+            {:stream_done, Context.new(), %{type: :content, content: "world"}}
+          end,
+          pubsub: @pubsub
+        )
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert response.content == "hello world"
+    end
+
+    test "context returned from function is passed through unmodified" do
+      empty_context = Context.new()
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn parent ->
+            send(parent, {:stream_chunk, %{type: :content, content: "hi"}})
+            {:stream_done, empty_context, %{type: :content, content: "hi"}}
+          end,
+          pubsub: @pubsub
+        )
+
+      assert_receive {:puck_stream, ^id, {:done, _response, context}}, 1000
+      assert context == empty_context
+    end
+
+    test "error from custom function broadcasts {:error, reason}" do
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn _parent -> {:error, :custom_error} end,
+          pubsub: @pubsub
+        )
+
+      assert_receive {:puck_stream, ^id, {:error, :custom_error}}, 1000
+    end
+
+    test "cancel mid-stream broadcasts {:cancelled, content}" do
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn _parent -> Process.sleep(5000) end,
+          pubsub: @pubsub
+        )
+
+      poll_until(fn -> Registry.lookup(Puck.LiveView.Registry, id) != [] end)
+      Puck.LiveView.cancel(id)
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+    end
+
+    test "timeout auto-cancels custom function stream" do
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn _parent -> Process.sleep(5000) end,
+          pubsub: @pubsub,
+          timeout: 50
+        )
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+    end
+  end
+
+  describe "handler option passthrough" do
+    defmodule TestHandler do
+      @behaviour Puck.LiveView.Handler
+
+      @impl true
+      def on_done(response, _context, %{agent: agent}) do
+        Agent.update(agent, fn _ -> {:called, response.content} end)
+        :ok
+      end
+    end
+
+    test "start_stream/4 passes handler to stream process" do
+      {:ok, agent} = Agent.start_link(fn -> nil end)
+      client = Client.new({Mock, stream_chunks: ["hi"]})
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(),
+          pubsub: @pubsub,
+          handler: {TestHandler, %{agent: agent}}
+        )
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+      poll_until(fn -> Agent.get(agent, & &1) != nil end)
+      assert {:called, "hi"} = Agent.get(agent, & &1)
+    end
+
+    test "start_stream/2 passes handler to stream process" do
+      {:ok, agent} = Agent.start_link(fn -> nil end)
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn parent ->
+            send(parent, {:stream_chunk, %{type: :content, content: "hello"}})
+            {:stream_done, Context.new(), %{type: :content, content: "hello"}}
+          end,
+          pubsub: @pubsub,
+          handler: {TestHandler, %{agent: agent}}
+        )
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+      poll_until(fn -> Agent.get(agent, & &1) != nil end)
+      assert {:called, "hello"} = Agent.get(agent, & &1)
+    end
+  end
+
+  describe "cancel/1" do
+    test "broadcasts {:cancelled, content} for active stream" do
+      client = Client.new({Mock, response: "slow", delay: 500})
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      poll_until(fn ->
+        Registry.lookup(Puck.LiveView.Registry, id) != []
+      end)
+
+      Puck.LiveView.cancel(id)
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+    end
+
+    test "no-op when stream does not exist" do
+      assert :ok = Puck.LiveView.cancel("nonexistent")
+    end
+  end
+
+  describe "streaming?/1" do
+    test "returns true during active stream" do
+      client = Client.new({Mock, response: "slow", delay: 500})
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      poll_until(fn -> Registry.lookup(Puck.LiveView.Registry, id) != [] end)
+      assert Puck.LiveView.streaming?(id)
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 2000
+    end
+
+    test "returns false after stream completes" do
+      client = Client.new({Mock, stream_chunks: ["a"]})
+
+      {:ok, id} =
+        Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+      poll_until(fn -> !Puck.LiveView.streaming?(id) end)
+      refute Puck.LiveView.streaming?(id)
+    end
+
+    test "returns false for unknown stream id" do
+      refute Puck.LiveView.streaming?("nonexistent")
+    end
+  end
+
+  describe "unsubscribe/2" do
+    test "stops receiving messages after unsubscribe" do
+      client = Client.new({Mock, stream_chunks: ["a"]})
+
+      {:ok, id} = Puck.LiveView.start_stream(client, "test", Context.new(), pubsub: @pubsub)
+      assert_receive {:puck_stream, ^id, {:done, _, _}}, 1000
+
+      Puck.LiveView.unsubscribe(id, pubsub: @pubsub)
+
+      Phoenix.PubSub.broadcast(@pubsub, Puck.LiveView.topic(id), {:puck_stream, id, :test})
+      refute_receive {:puck_stream, ^id, :test}, 100
+    end
+  end
+
+  defp poll_until(fun, timeout \\ 500) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_poll(fun, deadline)
+  end
+
+  defp do_poll(fun, deadline) do
+    if fun.() do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) > deadline, do: raise("poll timed out")
+      Process.sleep(1)
+      do_poll(fun, deadline)
+    end
+  end
+end

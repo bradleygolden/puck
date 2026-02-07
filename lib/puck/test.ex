@@ -34,8 +34,12 @@ defmodule Puck.Test do
 
   defp ensure_started do
     case start_link() do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started, _pid}} -> :ok
+      {:ok, pid} ->
+        Process.unlink(pid)
+        :ok
+
+      {:error, {:already_started, _pid}} ->
+        :ok
     end
   end
 
