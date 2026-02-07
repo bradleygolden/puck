@@ -13,7 +13,7 @@ One function. Any provider. Build whatever you want on top.
 
 ## The Primitives
 
-Eight building blocks. Compose them however you need:
+Seven building blocks. Compose them however you need:
 
 | Primitive | Purpose |
 |-----------|---------|
@@ -24,7 +24,6 @@ Eight building blocks. Compose them however you need:
 | `Puck.Compaction` | Handle long conversations |
 | `Puck.Eval` | Capture trajectories, grade outputs |
 | `Puck.Sandbox` | Execute LLM-generated code safely |
-| `Puck.LiveView` | Stream LLM responses into Phoenix LiveView |
 
 No orchestration. No hidden control flow. You write the loop.
 
