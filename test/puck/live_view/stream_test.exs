@@ -71,6 +71,75 @@ defmodule Puck.LiveView.StreamTest do
     end
   end
 
+  defp start_fun_stream(fun, opts \\ []) do
+    stream_id = Keyword.get_lazy(opts, :stream_id, &random_id/0)
+    timeout = Keyword.get(opts, :timeout)
+
+    Phoenix.PubSub.subscribe(@pubsub, "puck:stream:#{stream_id}")
+
+    {:ok, pid} =
+      DynamicSupervisor.start_child(
+        Puck.LiveView.DynamicSupervisor,
+        {StreamServer,
+         [
+           stream_id: stream_id,
+           pubsub: @pubsub,
+           task_supervisor: Puck.LiveView.TaskSupervisor,
+           registry: Puck.LiveView.Registry,
+           fun: fun,
+           timeout: timeout
+         ]}
+      )
+
+    %{stream_id: stream_id, pid: pid}
+  end
+
+  describe "custom function" do
+    test "streams chunks and completes with done" do
+      %{stream_id: id} =
+        start_fun_stream(fn parent ->
+          for text <- ["hello", " ", "world"] do
+            send(parent, {:stream_chunk, %{type: :content, content: text}})
+          end
+
+          {:stream_done, Context.new(), %{type: :content, content: "world"}}
+        end)
+
+      assert_receive {:puck_stream, ^id, {:content, %{content: "hello"}}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, %{content: " "}}}, 1000
+      assert_receive {:puck_stream, ^id, {:content, %{content: "world"}}}, 1000
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert response.content == "hello world"
+    end
+
+    test "error from custom function broadcasts error" do
+      %{stream_id: id} = start_fun_stream(fn _parent -> {:error, :custom_error} end)
+
+      assert_receive {:puck_stream, ^id, {:error, :custom_error}}, 1000
+    end
+
+    test "cancel mid-stream with accumulated content" do
+      %{stream_id: id} =
+        start_fun_stream(fn parent ->
+          send(parent, {:stream_chunk, %{type: :content, content: "partial"}})
+          Process.sleep(5000)
+        end)
+
+      assert_receive {:puck_stream, ^id, {:content, %{content: "partial"}}}, 1000
+      poll_until(fn -> Registry.lookup(Puck.LiveView.Registry, id) != [] end)
+      StreamServer.cancel(Puck.LiveView.Registry, id)
+
+      assert_receive {:puck_stream, ^id, {:cancelled, "partial"}}, 1000
+    end
+
+    test "timeout auto-cancels" do
+      %{stream_id: id} =
+        start_fun_stream(fn _parent -> Process.sleep(5000) end, timeout: 50)
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+    end
+  end
+
   describe "streaming" do
     test "broadcasts chunks tagged by their type" do
       %{stream_id: id} = start_stream()

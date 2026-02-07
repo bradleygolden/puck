@@ -25,21 +25,33 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
       stream_id = Keyword.fetch!(opts, :stream_id)
       pubsub = Keyword.fetch!(opts, :pubsub)
       task_supervisor = Keyword.fetch!(opts, :task_supervisor)
-      client = Keyword.fetch!(opts, :client)
-      prompt = Keyword.fetch!(opts, :prompt)
-      context = Keyword.fetch!(opts, :context)
-      stream_opts = Keyword.get(opts, :stream_opts, [])
       timeout = Keyword.get(opts, :timeout)
-
-      start_time =
-        Telemetry.start([:live_view, :stream], %{stream_id: stream_id, client: client})
 
       me = self()
 
-      task =
-        Task.Supervisor.async_nolink(task_supervisor, fn ->
-          consume(me, client, prompt, context, stream_opts)
-        end)
+      {task, start_time} =
+        case Keyword.fetch(opts, :fun) do
+          {:ok, fun} ->
+            start_time = Telemetry.start([:live_view, :stream], %{stream_id: stream_id})
+            task = Task.Supervisor.async_nolink(task_supervisor, fn -> fun.(me) end)
+            {task, start_time}
+
+          :error ->
+            client = Keyword.fetch!(opts, :client)
+            prompt = Keyword.fetch!(opts, :prompt)
+            context = Keyword.fetch!(opts, :context)
+            stream_opts = Keyword.get(opts, :stream_opts, [])
+
+            start_time =
+              Telemetry.start([:live_view, :stream], %{stream_id: stream_id, client: client})
+
+            task =
+              Task.Supervisor.async_nolink(task_supervisor, fn ->
+                consume(me, client, prompt, context, stream_opts)
+              end)
+
+            {task, start_time}
+        end
 
       if timeout, do: Process.send_after(self(), :timeout, timeout)
 
@@ -47,7 +59,6 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
         stream_id: stream_id,
         pubsub: pubsub,
         content: "",
-        context: context,
         task_ref: task.ref,
         task_pid: task.pid,
         cancelled: false,

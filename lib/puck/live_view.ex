@@ -4,8 +4,10 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     Supervised streaming for Phoenix LiveView.
 
     Starts a background stream task, subscribes the caller to PubSub, and
-    broadcasts chunks as they arrive. Two functions: `start_stream/4` to begin
-    and `cancel/1` to stop. You write your own `handle_info` clauses.
+    broadcasts chunks as they arrive. Use `start_stream/4` with a client,
+    prompt, and context for standard `Puck.stream/4` flows, or `start_stream/2`
+    with a custom function for full control over execution logic. Cancel with
+    `cancel/1`. You write your own `handle_info` clauses.
 
     ## Setup
 
@@ -81,6 +83,36 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
     maps are passed through unmodified and may include metadata like usage stats
     or model info depending on the backend.
 
+    ## Custom Function
+
+    When your streaming logic goes beyond a single `Puck.stream/4` call —
+    multi-turn agentic loops, structured outputs via `Puck.call/4`, or custom
+    orchestration — use `start_stream/2` with a function that receives the
+    stream's parent PID:
+
+        {:ok, stream_id} =
+          Puck.LiveView.start_stream(
+            fn parent ->
+              send(parent, {:stream_chunk, %{type: :content, content: "thinking..."}})
+
+              {:ok, result} = Puck.call(client, prompt, context, output_schema: schema)
+              last_chunk = %{type: :content, content: result.content}
+              send(parent, {:stream_chunk, last_chunk})
+
+              {:stream_done, context, last_chunk}
+            end,
+            pubsub: MyApp.PubSub
+          )
+
+    The function must follow this protocol:
+
+      - Send `{:stream_chunk, chunk}` messages to the parent PID during execution
+      - Return `{:stream_done, context, last_chunk}` on success
+      - Return `{:error, reason}` on failure
+
+    All lifecycle features (PubSub broadcasting, cancellation, timeout,
+    telemetry) work identically for both variants.
+
     """
 
     use Supervisor
@@ -152,6 +184,56 @@ if Code.ensure_loaded?(Phoenix.PubSub) do
                 context: context,
                 timeout: timeout,
                 stream_opts: opts
+              ]}
+           ) do
+        {:ok, _pid} ->
+          {:ok, stream_id}
+
+        {:error, reason} ->
+          Phoenix.PubSub.unsubscribe(pubsub, topic(stream_id))
+          {:error, reason}
+      end
+    end
+
+    @doc """
+    Starts a supervised stream with a custom function, subscribes the caller
+    to PubSub, and returns the stream ID.
+
+    The function receives the stream's parent PID and communicates using the
+    same protocol as `start_stream/4` internally: send `{:stream_chunk, chunk}`
+    messages during execution and return `{:stream_done, context, last_chunk}`
+    or `{:error, reason}`.
+
+    ## Options
+
+      - `:pubsub` - (required) PubSub module, e.g. `MyApp.PubSub`
+      - `:stream_id` - Custom stream ID (auto-generated if omitted)
+      - `:timeout` - Auto-cancel after this many milliseconds
+      - `:name` - Supervisor name to use (default: `Puck.LiveView`)
+
+    """
+    def start_stream(fun, opts) when is_function(fun, 1) do
+      {pubsub, opts} = Keyword.pop!(opts, :pubsub)
+      {stream_id, opts} = Keyword.pop_lazy(opts, :stream_id, &generate_id/0)
+      {name, opts} = Keyword.pop(opts, :name, __MODULE__)
+      {timeout, _opts} = Keyword.pop(opts, :timeout)
+
+      registry = Module.concat(name, Registry)
+      task_supervisor = Module.concat(name, TaskSupervisor)
+      dynamic_supervisor = Module.concat(name, DynamicSupervisor)
+
+      Phoenix.PubSub.subscribe(pubsub, topic(stream_id))
+
+      case DynamicSupervisor.start_child(
+             dynamic_supervisor,
+             {Puck.LiveView.Stream,
+              [
+                stream_id: stream_id,
+                pubsub: pubsub,
+                task_supervisor: task_supervisor,
+                registry: registry,
+                fun: fun,
+                timeout: timeout
               ]}
            ) do
         {:ok, _pid} ->

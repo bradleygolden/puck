@@ -134,6 +134,80 @@ defmodule Puck.LiveViewTest do
     end
   end
 
+  describe "start_stream/2" do
+    test "returns {:ok, stream_id} and delivers chunks + done messages" do
+      {:ok, stream_id} =
+        Puck.LiveView.start_stream(
+          fn parent ->
+            for text <- ["hello", " ", "world"] do
+              send(parent, {:stream_chunk, %{type: :content, content: text}})
+            end
+
+            {:stream_done, Context.new(), %{type: :content, content: "world"}}
+          end,
+          pubsub: @pubsub
+        )
+
+      assert is_binary(stream_id)
+
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: "hello"}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: " "}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:content, %{content: "world"}}}, 1000
+      assert_receive {:puck_stream, ^stream_id, {:done, %Response{}, %Context{}}}, 1000
+    end
+
+    test "done message includes accumulated content" do
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn parent ->
+            for text <- ["hello", " ", "world"] do
+              send(parent, {:stream_chunk, %{type: :content, content: text}})
+            end
+
+            {:stream_done, Context.new(), %{type: :content, content: "world"}}
+          end,
+          pubsub: @pubsub
+        )
+
+      assert_receive {:puck_stream, ^id, {:done, response, _context}}, 1000
+      assert response.content == "hello world"
+    end
+
+    test "error from custom function broadcasts {:error, reason}" do
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn _parent -> {:error, :custom_error} end,
+          pubsub: @pubsub
+        )
+
+      assert_receive {:puck_stream, ^id, {:error, :custom_error}}, 1000
+    end
+
+    test "cancel mid-stream broadcasts {:cancelled, content}" do
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn _parent -> Process.sleep(5000) end,
+          pubsub: @pubsub
+        )
+
+      poll_until(fn -> Registry.lookup(Puck.LiveView.Registry, id) != [] end)
+      Puck.LiveView.cancel(id)
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+    end
+
+    test "timeout auto-cancels custom function stream" do
+      {:ok, id} =
+        Puck.LiveView.start_stream(
+          fn _parent -> Process.sleep(5000) end,
+          pubsub: @pubsub,
+          timeout: 50
+        )
+
+      assert_receive {:puck_stream, ^id, {:cancelled, _}}, 1000
+    end
+  end
+
   describe "cancel/1" do
     test "broadcasts {:cancelled, content} for active stream" do
       client = Client.new({Mock, response: "slow", delay: 500})
