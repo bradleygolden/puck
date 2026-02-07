@@ -7,12 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-02-07
+
 ### Added
 
-- `Puck.LiveView` — Stream LLM responses into Phoenix LiveView with PubSub, cancellation, and timeout
-- Custom function streaming via `start_stream/2` for multi-turn loops and structured output orchestration
+- `Puck.LiveView` — stream LLM responses into Phoenix LiveView with PubSub, cancellation, and timeout
+- `start_stream/2` function variant for multi-turn loops and structured output orchestration
 - `Puck.LiveView.Handler` behaviour for pluggable persistence in the stream process
 - LiveView telemetry events for stream lifecycle monitoring
+
+### Fixed
+
+- `Puck.Test` no longer causes flaky failures in async tests (NimbleOwnership process is now unlinked from the starting test process)
 
 ## [0.2.11] - 2026-02-06
 
@@ -154,7 +160,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.11...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.12...HEAD
+[0.2.12]: https://github.com/bradleygolden/puck/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/bradleygolden/puck/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/bradleygolden/puck/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/bradleygolden/puck/compare/v0.2.8...v0.2.9

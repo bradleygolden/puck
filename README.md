@@ -666,6 +666,7 @@ Puck.Telemetry.attach_default_logger(level: :info)
 | `[:puck, :live_view, :stream, :stop]` | After LiveView stream completes |
 | `[:puck, :live_view, :stream, :error]` | LiveView stream failed |
 | `[:puck, :live_view, :stream, :cancel]` | LiveView stream cancelled |
+| `[:puck, :live_view, :stream, :handler_error]` | LiveView handler callback raised |
 
 ## More Examples
 
