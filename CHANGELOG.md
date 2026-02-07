@@ -9,11 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `Puck.LiveView` — stream LLM responses into Phoenix LiveView with supervision, PubSub delivery, cancellation, and timeout
-- `Puck.LiveView.start_stream/2` — run a custom function (multi-turn loops, `Puck.call/4` orchestration) with the same streaming lifecycle as `start_stream/4`
-- `Puck.LiveView.streaming?/1` — check whether a stream is currently active
-- Structured output support in LiveView streaming via the `:output_schema` option
-- LiveView telemetry events: `[:puck, :live_view, :stream, :start]`, `[:puck, :live_view, :stream, :stop]`, `[:puck, :live_view, :stream, :error]`, `[:puck, :live_view, :stream, :cancel]`
+- `Puck.LiveView` — Stream LLM responses into Phoenix LiveView with PubSub, cancellation, and timeout
+- Custom function streaming via `start_stream/2` for multi-turn loops and structured output orchestration
+- LiveView telemetry events for stream lifecycle monitoring
 
 ## [0.2.11] - 2026-02-06
 
