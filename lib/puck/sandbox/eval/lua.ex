@@ -257,7 +257,7 @@ defmodule Puck.Sandbox.Eval.Lua do
   defp ensure_zoi_available! do
     unless Code.ensure_loaded?(Zoi) do
       raise Error,
-        reason: "Zoi module not available. Add {:zoi, \"~> 0.7\"} to your dependencies."
+        reason: "Zoi module not available. Add {:zoi, \"~> 0.17\"} to your dependencies."
     end
   end
 end
