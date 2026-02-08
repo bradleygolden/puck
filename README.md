@@ -119,7 +119,7 @@ def deps do
     # Optional features
     {:solid, "~> 0.15"},           # Liquid template syntax
     {:telemetry, "~> 1.2"},        # Observability
-    {:zoi, "~> 0.7"},              # Schema validation for structured outputs
+    {:zoi, "~> 0.17"},             # Schema validation for structured outputs
     {:lua, "~> 0.4.0"},            # Lua sandbox for code execution
     {:phoenix_pubsub, "~> 2.1"}    # LiveView streaming integration
   ]
