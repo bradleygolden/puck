@@ -208,6 +208,49 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
       end
     end
 
+    describe "call/3 result content fallback" do
+      test "preserves assistant content when result has no structured_output or result", %{
+        config: config
+      } do
+        stub(ClaudeAgentSDK, :query, fn _prompt, _opts ->
+          [
+            %ClaudeAgentSDK.Message{
+              type: :system,
+              subtype: :init,
+              data: %{session_id: "s1"},
+              raw: %{}
+            },
+            %ClaudeAgentSDK.Message{
+              type: :assistant,
+              data: %{
+                session_id: "s1",
+                message: %{content: [%{"type" => "text", "text" => "Hello from assistant"}]}
+              },
+              raw: %{}
+            },
+            %ClaudeAgentSDK.Message{
+              type: :result,
+              subtype: :success,
+              data: %{
+                session_id: "s1",
+                subtype: :success,
+                usage: %{input_tokens: 10, output_tokens: 5},
+                num_turns: 1,
+                duration_ms: 100,
+                total_cost_usd: 0.001
+              },
+              raw: %{}
+            }
+          ]
+        end)
+
+        messages = [Message.new(:user, "hello")]
+        {:ok, response} = Backend.call(config, messages, [])
+
+        assert response.content == "Hello from assistant"
+      end
+    end
+
     describe "stream/3 partial chunks" do
       test "emits partial chunks for content_block_delta stream events", %{config: config} do
         stub(ClaudeAgentSDK, :query, fn _prompt, _opts ->

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Claude Agent SDK backend no longer returns nil content when the result message lacks `structured_output` and `result` fields
+
 ## [0.2.12] - 2026-02-07
 
 ### Added

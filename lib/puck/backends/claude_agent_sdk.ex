@@ -235,9 +235,9 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
 
     defp accumulate_message(
            %ClaudeAgentSDK.Message{type: :result, data: data},
-           {_, session_id, _}
+           {existing_content, session_id, _}
          ) do
-      content = get_in_any(data, [:structured_output, :result])
+      content = get_in_any(data, [:structured_output, :result]) || existing_content
       {content, session_id, data}
     end
 
