@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-02-08
+
 ### Fixed
 
 - Claude Agent SDK backend no longer returns nil content when the result message lacks `structured_output` and `result` fields
+
+### Changed
+
+- Bumped `claude_agent_sdk` dependency from `~> 0.8` to `~> 0.11`
 
 ## [0.2.12] - 2026-02-07
 
@@ -164,7 +170,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.12...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.13...HEAD
+[0.2.13]: https://github.com/bradleygolden/puck/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/bradleygolden/puck/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/bradleygolden/puck/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/bradleygolden/puck/compare/v0.2.9...v0.2.10
