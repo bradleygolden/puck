@@ -191,11 +191,18 @@ defmodule Puck.Sandbox.Eval.Lua do
 
     defp wrap_callback(func) do
       fn args, lua_state ->
-        result = apply(func, args) |> stringify_keys()
+        decoded_args = Enum.map(args, &decode_arg(&1, lua_state))
+        result = apply(func, decoded_args) |> stringify_keys()
         {encoded, lua_state} = Lua.encode!(lua_state, result)
         {[encoded], lua_state}
       end
     end
+
+    defp decode_arg({:tref, _} = ref, lua_state) do
+      Lua.decode!(lua_state, ref) |> normalize()
+    end
+
+    defp decode_arg(arg, _lua_state), do: arg
 
     defp stringify_keys(map) when is_map(map) and not is_struct(map) do
       Map.new(map, fn

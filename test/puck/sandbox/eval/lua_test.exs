@@ -86,6 +86,52 @@ defmodule Puck.Sandbox.Eval.LuaTest do
       assert {:ok, "bar"} = Lua.eval("return get_items()[2].name", callbacks: callbacks)
     end
 
+    test "callback receives decoded table argument as map" do
+      callbacks = %{
+        "process" => fn opts -> opts end
+      }
+
+      {:ok, result} =
+        Lua.eval(
+          ~s[return process({mode = "fast", retries = 3})],
+          callbacks: callbacks
+        )
+
+      assert is_map(result)
+      assert result == %{"mode" => "fast", "retries" => 3}
+    end
+
+    test "callback receives decoded nested table argument" do
+      callbacks = %{
+        "process" => fn opts -> opts end
+      }
+
+      {:ok, result} =
+        Lua.eval(
+          ~s[return process({user = {name = "Alice"}, active = true})],
+          callbacks: callbacks
+        )
+
+      assert is_map(result)
+      assert result["user"] == %{"name" => "Alice"}
+      assert result["active"] == true
+    end
+
+    test "callback receives mixed args with table decoded" do
+      callbacks = %{
+        "create" => fn name, opts -> %{"name" => name, "opts" => opts} end
+      }
+
+      {:ok, result} =
+        Lua.eval(
+          ~s[return create("test", {priority = "high"})],
+          callbacks: callbacks
+        )
+
+      assert result["name"] == "test"
+      assert result["opts"] == %{"priority" => "high"}
+    end
+
     test "timeout on infinite loop" do
       assert {:error, :timeout} =
                Lua.eval(
