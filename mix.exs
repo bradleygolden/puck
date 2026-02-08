@@ -52,7 +52,7 @@ defmodule Puck.MixProject do
       {:req_llm, "~> 1.0", optional: true},
       {:solid, "~> 0.15", optional: true},
       {:telemetry, "~> 1.2", optional: true},
-      {:zoi, "~> 0.7", optional: true},
+      {:zoi, "~> 0.17", optional: true},
       {:lua, "~> 0.4.0", optional: true},
       {:phoenix_pubsub, "~> 2.1", optional: true},
       {:nimble_ownership, "~> 1.0"},

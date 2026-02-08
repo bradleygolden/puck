@@ -91,7 +91,7 @@ defmodule Puck.Sandbox.Eval.Lua do
       @func_spec Zoi.object(%{
         name: Zoi.enum(["double", "search"]),
         description: Zoi.string()
-      }, strict: true, coerce: true)
+      }, unrecognized_keys: :error, coerce: true)
 
       schema = Zoi.union([
         Puck.Sandbox.Eval.Lua.schema(@func_spec),

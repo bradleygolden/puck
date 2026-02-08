@@ -225,7 +225,8 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
 
     defp strip_unsupported_fields(value), do: value
 
-    defp to_llm_schema(%Zoi.Types.Struct{fields: fields}), do: Zoi.object(fields, strict: true)
+    defp to_llm_schema(%Zoi.Types.Struct{fields: fields}),
+      do: Zoi.object(fields, unrecognized_keys: :error)
 
     defp to_llm_schema(%Zoi.Types.Union{schemas: schemas} = union) do
       %{union | schemas: Enum.map(schemas, &to_llm_schema/1)}

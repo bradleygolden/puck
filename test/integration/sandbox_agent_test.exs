@@ -17,14 +17,14 @@ defmodule Puck.SandboxAgentTest do
   # The LLM just selects which functions it's using - actual calls happen in Lua code.
   @double_func Zoi.object(
                  %{name: Zoi.literal("double")},
-                 strict: true,
+                 unrecognized_keys: :error,
                  coerce: true,
                  description: "double(n: number) -> number: Doubles the input number"
                )
 
   @add_func Zoi.object(
               %{name: Zoi.literal("add")},
-              strict: true,
+              unrecognized_keys: :error,
               coerce: true,
               description: "add(a: number, b: number) -> number: Adds two numbers together"
             )

@@ -45,11 +45,17 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
 end
 
 if Code.ensure_loaded?(ClaudeAgentSDK) do
+  defmodule Puck.Backends.ClaudeAgentSDK.TestAction do
+    @moduledoc false
+    defstruct type: "test", name: nil
+  end
+
   defmodule Puck.Backends.ClaudeAgentSDK.SessionResumeTest do
     use ExUnit.Case, async: true
     use Mimic
 
     alias Puck.Backends.ClaudeAgentSDK, as: Backend
+    alias Puck.Backends.ClaudeAgentSDK.TestAction
     alias Puck.Message
 
     defp stub_query(session_id) do
@@ -205,6 +211,43 @@ if Code.ensure_loaded?(ClaudeAgentSDK) do
         {:ok, response} = Backend.call(config, messages, [])
 
         assert response.metadata.session_id == "my-session-id"
+      end
+    end
+
+    describe "call/3 with struct output_schema" do
+      test "does not emit Zoi deprecation warnings", %{config: config} do
+        schema =
+          Zoi.struct(
+            TestAction,
+            %{type: Zoi.literal("test"), name: Zoi.string()},
+            coerce: true
+          )
+
+        stub(ClaudeAgentSDK, :query, fn _prompt, _opts ->
+          [
+            %ClaudeAgentSDK.Message{
+              type: :result,
+              subtype: :success,
+              data: %{
+                session_id: "s1",
+                structured_output: %{"type" => "test", "name" => "hello"},
+                subtype: :success,
+                usage: %{input_tokens: 10, output_tokens: 5}
+              },
+              raw: %{}
+            }
+          ]
+        end)
+
+        messages = [Message.new(:user, "hello")]
+
+        warnings =
+          ExUnit.CaptureIO.capture_io(:stderr, fn ->
+            {:ok, _response} = Backend.call(config, messages, output_schema: schema)
+          end)
+
+        refute warnings =~ "strict",
+               "Expected no :strict deprecation warning, got: #{warnings}"
       end
     end
 

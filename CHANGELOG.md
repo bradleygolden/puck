@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Replaced deprecated `strict: true` with `unrecognized_keys: :error` for Zoi 0.17 compatibility
+
+### Changed
+
+- Bumped `zoi` dependency from `~> 0.7` to `~> 0.17`
+
 ## [0.2.13] - 2026-02-08
 
 ### Fixed
