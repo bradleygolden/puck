@@ -31,6 +31,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     @behaviour Puck.Backend
 
+    alias Puck.Backends.Baml.TypeBuilder
     alias Puck.{Message, Response}
 
     @impl true
@@ -159,7 +160,9 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         |> Map.new()
 
       if output_schema do
-        Map.put(opts, :parse, false)
+        opts
+        |> Map.put(:parse, false)
+        |> Map.put(:tb, TypeBuilder.from_schema(output_schema))
       else
         opts
       end

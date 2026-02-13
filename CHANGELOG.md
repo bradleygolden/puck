@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- BAML backend now auto-builds `TypeBuilder` from `output_schema`, giving BAML's Rust runtime full knowledge of dynamic types for Schema-Aligned Parsing and `ctx.output_format` prompt formatting
+
 ### Fixed
 
 - Replaced deprecated `strict: true` with `unrecognized_keys: :error` for Zoi 0.17 compatibility

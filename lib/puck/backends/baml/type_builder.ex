@@ -1,0 +1,186 @@
+if Code.ensure_loaded?(BamlElixir.Client) do
+  defmodule Puck.Backends.Baml.TypeBuilder do
+    @moduledoc """
+    Converts Zoi schemas to `BamlElixir.TypeBuilder` structs.
+
+    When using the BAML backend with `output_schema`, Zoi schemas define the
+    expected output structure but BAML's Rust runtime has no knowledge of these
+    types. This module bridges the gap by converting Zoi schemas into
+    `BamlElixir.TypeBuilder` structs that can be passed as the `:tb` option,
+    giving BAML full knowledge of the schema for Schema-Aligned Parsing and
+    prompt formatting via `ctx.output_format`.
+
+    ## Pipeline
+
+    1. Normalize struct schemas to object schemas (structs can't be JSON encoded)
+    2. Convert to JSON Schema via `Zoi.to_json_schema/1`
+    3. Recursively convert JSON Schema nodes to TypeBuilder structs
+
+    ## Examples
+
+        iex> schema = Zoi.object(%{name: Zoi.string(), age: Zoi.integer()})
+        iex> types = Puck.Backends.Baml.TypeBuilder.from_schema(schema)
+        iex> [%BamlElixir.TypeBuilder.Class{name: "DynamicOutput"}] = types
+
+    """
+
+    alias BamlElixir.TypeBuilder, as: TB
+
+    @doc """
+    Converts a Zoi schema to a list of `BamlElixir.TypeBuilder` structs.
+
+    Returns a list of named types (classes, enums) that BAML's Rust runtime
+    needs to know about. Inline types (lists, maps, unions, literals) are
+    embedded directly in field type references.
+
+    ## Options
+
+      * `:name` - Root type name (default: `"DynamicOutput"`)
+
+    """
+    def from_schema(zoi_schema, opts \\ []) do
+      name = Keyword.get(opts, :name, "DynamicOutput")
+
+      json_schema =
+        zoi_schema
+        |> normalize_schema()
+        |> Zoi.to_json_schema()
+        |> Map.delete(:"$schema")
+
+      {_ref, state} = convert(json_schema, name, %{types: []})
+      Enum.reverse(state.types)
+    end
+
+    defp normalize_schema(%Zoi.Types.Struct{fields: fields}),
+      do: Zoi.object(fields, unrecognized_keys: :error)
+
+    defp normalize_schema(%Zoi.Types.Union{schemas: schemas} = union),
+      do: %{union | schemas: Enum.map(schemas, &normalize_schema/1)}
+
+    defp normalize_schema(schema), do: schema
+
+    # --- Convert dispatch ---
+
+    # String enum — must precede plain string match
+    defp convert(%{type: :string, enum: values}, name, state) do
+      enum_type = %TB.Enum{
+        name: name,
+        values: Enum.map(values, fn v -> %TB.EnumValue{value: to_string(v)} end)
+      }
+
+      {name, add_type(state, enum_type)}
+    end
+
+    # Object with properties
+    defp convert(%{type: :object, properties: props} = schema, name, state)
+         when is_map(props) do
+      required = Map.get(schema, :required, [])
+
+      {fields, state} =
+        props
+        |> Enum.sort_by(fn {k, _} -> to_string(k) end)
+        |> Enum.reduce({[], state}, fn {field_name, field_schema}, {fields_acc, state_acc} ->
+          field_name_str = to_string(field_name)
+          child_name = name <> pascal_case(field_name_str)
+          description = Map.get(field_schema, :description)
+
+          {type_ref, state_acc} = convert(field_schema, child_name, state_acc)
+
+          type_ref =
+            if field_name not in required and not nullable_schema?(field_schema) do
+              make_nullable(type_ref)
+            else
+              type_ref
+            end
+
+          field = %TB.Field{
+            name: field_name_str,
+            type: type_ref,
+            description: description
+          }
+
+          {[field | fields_acc], state_acc}
+        end)
+
+      class = %TB.Class{name: name, fields: Enum.reverse(fields)}
+      {name, add_type(state, class)}
+    end
+
+    # Generic object (no properties)
+    defp convert(%{type: :object}, _name, state) do
+      {%TB.Map{key_type: "string", value_type: "string"}, state}
+    end
+
+    # Array with items
+    defp convert(%{type: :array, items: items}, name, state) do
+      {inner_ref, state} = convert(items, name, state)
+      {%TB.List{type: inner_ref}, state}
+    end
+
+    # Array without items
+    defp convert(%{type: :array}, _name, state) do
+      {%TB.List{type: "string"}, state}
+    end
+
+    # Primitives
+    defp convert(%{type: :string}, _name, state), do: {"string", state}
+    defp convert(%{type: :integer}, _name, state), do: {"int", state}
+    defp convert(%{type: :number}, _name, state), do: {"float", state}
+    defp convert(%{type: :boolean}, _name, state), do: {"bool", state}
+    defp convert(%{type: :null}, _name, state), do: {"null", state}
+
+    # Literal
+    defp convert(%{const: value}, _name, state) do
+      {%TB.Literal{value: value}, state}
+    end
+
+    # anyOf — nullable or general union
+    defp convert(%{anyOf: variants}, name, state) do
+      case extract_nullable(variants) do
+        {:nullable, inner} ->
+          {inner_ref, state} = convert(inner, name, state)
+          {make_nullable(inner_ref), state}
+
+        :not_nullable ->
+          {type_refs, state} =
+            variants
+            |> Enum.with_index()
+            |> Enum.reduce({[], state}, fn {variant, idx}, {refs_acc, state_acc} ->
+              variant_name = "#{name}Variant#{idx}"
+              {ref, state_acc} = convert(variant, variant_name, state_acc)
+              {[ref | refs_acc], state_acc}
+            end)
+
+          {%TB.Union{types: Enum.reverse(type_refs)}, state}
+      end
+    end
+
+    # --- Helpers ---
+
+    defp extract_nullable(variants) do
+      non_null = Enum.reject(variants, &match?(%{type: :null}, &1))
+
+      if length(non_null) == length(variants) - 1 and length(non_null) == 1 do
+        {:nullable, hd(non_null)}
+      else
+        :not_nullable
+      end
+    end
+
+    defp nullable_schema?(%{anyOf: variants}),
+      do: Enum.any?(variants, &match?(%{type: :null}, &1))
+
+    defp nullable_schema?(_), do: false
+
+    defp make_nullable(ref) when is_binary(ref), do: ref <> "?"
+    defp make_nullable(ref), do: %TB.Union{types: [ref, "null"]}
+
+    defp add_type(state, type), do: %{state | types: [type | state.types]}
+
+    defp pascal_case(str) do
+      str
+      |> String.split("_")
+      |> Enum.map_join(&String.capitalize/1)
+    end
+  end
+end
