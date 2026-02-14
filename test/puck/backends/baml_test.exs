@@ -1,8 +1,11 @@
 if Code.ensure_loaded?(BamlElixir.Client) do
   defmodule Puck.Backends.BamlTest do
     use ExUnit.Case, async: true
+    use Mimic
 
+    alias BamlElixir.TypeBuilder, as: TB
     alias Puck.Backends.Baml
+    alias Puck.Message
 
     describe "Puck.Backends.Baml" do
       test "implements Puck.Backend behaviour" do
@@ -42,45 +45,36 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         assert info.function == "unknown"
       end
     end
-  end
-end
 
-defmodule Puck.Backends.Baml.OptsThreadingTest do
-  use ExUnit.Case, async: true
-  use Mimic
+    describe "build_baml_opts schema_descriptions threading" do
+      test "passes schema_descriptions through to TypeBuilder" do
+        schema =
+          Zoi.union([
+            Zoi.object(%{type: Zoi.literal("search"), query: Zoi.string()}),
+            Zoi.object(%{type: Zoi.literal("list_skills"), name: Zoi.string()})
+          ])
 
-  alias BamlElixir.TypeBuilder, as: TB
-  alias Puck.Backends.Baml
-  alias Puck.Message
+        expect(BamlElixir.Client, :call, fn _function, _args, opts ->
+          tb = opts.tb
+          classes = Enum.filter(tb, &match?(%TB.Class{}, &1))
 
-  describe "build_baml_opts schema_descriptions threading" do
-    test "passes schema_descriptions through to TypeBuilder" do
-      schema =
-        Zoi.union([
-          Zoi.object(%{type: Zoi.literal("search"), query: Zoi.string()}),
-          Zoi.object(%{type: Zoi.literal("list_skills"), name: Zoi.string()})
-        ])
+          list_class = Enum.find(classes, &(&1.name == "DynamicOutputListSkills"))
+          type_field = Enum.find(list_class.fields, &(&1.name == "type"))
+          assert type_field.description == "Lists all available skills"
 
-      expect(BamlElixir.Client, :call, fn _function, _args, opts ->
-        tb = opts.tb
-        classes = Enum.filter(tb, &match?(%TB.Class{}, &1))
+          {:ok, "result"}
+        end)
 
-        list_class = Enum.find(classes, &(&1.name == "DynamicOutputListSkills"))
-        type_field = Enum.find(list_class.fields, &(&1.name == "type"))
-        assert type_field.description == "Lists all available skills"
+        config = %{function: "TestFunction"}
+        messages = [Message.new(:user, "hello")]
 
-        {:ok, "result"}
-      end)
+        opts = [
+          output_schema: schema,
+          backend_opts: [schema_descriptions: %{"list_skills" => "Lists all available skills"}]
+        ]
 
-      config = %{function: "TestFunction"}
-      messages = [Message.new(:user, "hello")]
-
-      opts = [
-        output_schema: schema,
-        backend_opts: [schema_descriptions: %{"list_skills" => "Lists all available skills"}]
-      ]
-
-      {:ok, _response} = Baml.call(config, messages, opts)
+        {:ok, _response} = Baml.call(config, messages, opts)
+      end
     end
   end
 end
