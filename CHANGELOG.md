@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- BAML `dynamic_classes` TypeBuilder no longer renders `// nil` comments on dynamic fields in prompts
+
 ## [0.2.16] - 2026-02-14
 
 ### Fixed
