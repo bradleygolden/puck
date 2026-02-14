@@ -142,6 +142,56 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
     end
 
+    describe "dynamic_classes prompt rendering" do
+      defmodule ActionSearch do
+        @moduledoc false
+        defstruct type: "search", query: nil
+      end
+
+      defmodule ActionDone do
+        @moduledoc false
+        defstruct type: "done", message: nil
+      end
+
+      @tag timeout: 60_000
+      test "dynamic fields do not render // nil comments in prompt" do
+        alias Puck.Backends.Baml.TypeBuilder
+
+        schema =
+          Zoi.union([
+            Zoi.struct(ActionSearch, %{type: Zoi.enum(["search"]), query: Zoi.string()}),
+            Zoi.struct(ActionDone, %{type: Zoi.enum(["done"]), message: Zoi.string()})
+          ])
+
+        dynamic_classes = %{"PluginAction" => [ActionSearch, ActionDone]}
+        descriptions = %{"search" => "Search for items", "done" => "Task complete"}
+
+        tb = TypeBuilder.from_dynamic_union(schema, dynamic_classes, descriptions)
+
+        collector = BamlElixir.Collector.new("prompt-check")
+
+        {:ok, _result} =
+          BamlElixir.Client.call(
+            "ChoosePluginAction",
+            %{text: "Search for cats"},
+            %{
+              path: "test/support/baml_src",
+              parse: false,
+              tb: tb,
+              collectors: [collector]
+            }
+          )
+
+        log = BamlElixir.Collector.last_function_log(collector)
+        body = get_in(log, ["calls", Access.at(0), "request", "body"])
+        prompt = Jason.decode!(body)
+        system_content = Enum.find(prompt["messages"], &(&1["role"] == "system"))["content"]
+
+        refute system_content =~ "// nil",
+               "Prompt should not contain '// nil' comments but got:\n#{system_content}"
+      end
+    end
+
     defp check_ollama_available do
       url = "http://localhost:11434/api/tags"
 

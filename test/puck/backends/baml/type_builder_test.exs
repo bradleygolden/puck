@@ -444,6 +444,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
         for field <- fields do
           assert %TB.Union{types: [:string, :null]} = field.type
+          assert field.description == ""
         end
       end
 

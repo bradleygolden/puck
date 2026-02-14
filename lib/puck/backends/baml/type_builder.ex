@@ -88,7 +88,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
         other_fields =
           Enum.map(dynamic_fields, fn name ->
-            %TB.Field{name: name, type: %TB.Union{types: [:string, :null]}}
+            %TB.Field{name: name, type: %TB.Union{types: [:string, :null]}, description: ""}
           end)
 
         class = %TB.Class{
