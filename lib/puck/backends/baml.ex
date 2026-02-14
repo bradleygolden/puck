@@ -249,13 +249,36 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     end
 
     defp maybe_parse_schema(schema, result) when is_map(result) and not is_nil(schema) do
-      case Zoi.parse(schema, result) do
+      normalized = normalize_nif_result(result)
+
+      case Zoi.parse(schema, normalized) do
         {:ok, parsed} -> parsed
-        {:error, _} -> result
+        {:error, _} -> normalized
       end
     end
 
     defp maybe_parse_schema(_schema, result), do: result
+
+    @doc false
+    def normalize_nif_result(%{__baml_enum__: _, value: v}), do: v
+    def normalize_nif_result(%{"__baml_enum__" => _, "value" => v}), do: v
+
+    def normalize_nif_result(%{__baml_class__: _} = map) do
+      map
+      |> Map.delete(:__baml_class__)
+      |> Map.new(fn {k, v} -> {k, normalize_nif_result(v)} end)
+    end
+
+    def normalize_nif_result(%{"__baml_class__" => _} = map) do
+      map
+      |> Map.delete("__baml_class__")
+      |> Map.new(fn {k, v} -> {k, normalize_nif_result(v)} end)
+    end
+
+    def normalize_nif_result(list) when is_list(list),
+      do: Enum.map(list, &normalize_nif_result/1)
+
+    def normalize_nif_result(other), do: other
 
     defp start_stream(caller, ref, function_name, args, opts) do
       spawn_link(fn ->
