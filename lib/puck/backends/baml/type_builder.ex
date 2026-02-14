@@ -27,6 +27,80 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     alias BamlElixir.TypeBuilder, as: TB
 
     @doc """
+    Builds TypeBuilder structs for a union schema with dynamic classes.
+
+    When a union schema has runtime-declared dynamic classes, this function
+    emits a `TB.Enum` for the type discriminator (with per-value descriptions)
+    and a `TB.Class` for the shared dynamic fields. Non-type fields are collected
+    from all dynamic schemas and emitted as `string | null` unions.
+
+    Returns a flat list of `TB.Enum` and `TB.Class` structs.
+    """
+    def from_dynamic_union(
+          %Zoi.Types.Union{schemas: schemas},
+          dynamic_classes,
+          schema_descriptions \\ %{}
+        ) do
+      dynamic_modules =
+        dynamic_classes
+        |> Map.values()
+        |> List.flatten()
+        |> MapSet.new()
+
+      dynamic_schemas =
+        Enum.filter(schemas, fn
+          %Zoi.Types.Struct{module: mod} -> mod in dynamic_modules
+          _ -> false
+        end)
+
+      type_values =
+        Enum.flat_map(dynamic_schemas, fn %Zoi.Types.Struct{fields: fields} ->
+          case Keyword.get(fields, :type) do
+            %Zoi.Types.Enum{values: [{value, _} | _]} -> [value]
+            %Zoi.Types.Enum{values: [value | _]} when is_binary(value) -> [value]
+            _ -> []
+          end
+        end)
+
+      dynamic_fields =
+        dynamic_schemas
+        |> Enum.flat_map(fn %Zoi.Types.Struct{fields: fields} ->
+          fields
+          |> Keyword.keys()
+          |> Enum.reject(&(&1 == :type))
+          |> Enum.map(&to_string/1)
+        end)
+        |> Enum.uniq()
+
+      Enum.flat_map(dynamic_classes, fn {class_name, _modules} ->
+        type_enum_name = class_name <> "Type"
+
+        type_enum = %TB.Enum{
+          name: type_enum_name,
+          values:
+            Enum.map(type_values, fn value ->
+              %TB.EnumValue{
+                value: value,
+                description: Map.get(schema_descriptions, value)
+              }
+            end)
+        }
+
+        other_fields =
+          Enum.map(dynamic_fields, fn name ->
+            %TB.Field{name: name, type: %TB.Union{types: [:string, :null]}}
+          end)
+
+        class = %TB.Class{
+          name: class_name,
+          fields: other_fields
+        }
+
+        [type_enum, class]
+      end)
+    end
+
+    @doc """
     Converts a Zoi schema to a list of `BamlElixir.TypeBuilder` structs.
 
     Returns a list of named types (classes, enums) that BAML's Rust runtime

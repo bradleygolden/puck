@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - BAML backend now strips `__baml_class__` and `__baml_enum__` metadata from NIF results before Zoi parsing, fixing struct parsing failures when `output_schema` is used
+- BAML `dynamic_classes` TypeBuilder now emits a dedicated enum for type discriminators with descriptions, fixing union variants being collapsed to `{ type: string }` in rendered prompts
 
 ## [0.2.15] - 2026-02-14
 
@@ -203,7 +204,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.13...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.15...HEAD
+[0.2.15]: https://github.com/bradleygolden/puck/compare/v0.2.14...v0.2.15
+[0.2.14]: https://github.com/bradleygolden/puck/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/bradleygolden/puck/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/bradleygolden/puck/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/bradleygolden/puck/compare/v0.2.10...v0.2.11

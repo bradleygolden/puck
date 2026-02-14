@@ -31,7 +31,6 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     @behaviour Puck.Backend
 
-    alias BamlElixir.TypeBuilder, as: TB
     alias Puck.Backends.Baml.TypeBuilder
     alias Puck.{Message, Response}
 
@@ -180,39 +179,11 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     end
 
     defp build_type_builder(
-           %Zoi.Types.Union{schemas: schemas},
+           %Zoi.Types.Union{} = union_schema,
            dynamic_classes,
-           _schema_descriptions
+           schema_descriptions
          ) do
-      dynamic_modules =
-        dynamic_classes
-        |> Map.values()
-        |> List.flatten()
-        |> MapSet.new()
-
-      dynamic_fields =
-        schemas
-        |> Enum.filter(fn
-          %Zoi.Types.Struct{module: mod} -> mod in dynamic_modules
-          _ -> false
-        end)
-        |> Enum.flat_map(fn %Zoi.Types.Struct{fields: fields} ->
-          fields
-          |> Keyword.keys()
-          |> Enum.reject(&(&1 == :type))
-          |> Enum.map(&to_string/1)
-        end)
-        |> Enum.uniq()
-
-      Enum.map(dynamic_classes, fn {class_name, _modules} ->
-        %TB.Class{
-          name: class_name,
-          fields:
-            Enum.map(dynamic_fields, fn name ->
-              %TB.Field{name: name, type: %TB.Union{types: [:string, :null]}}
-            end)
-        }
-      end)
+      TypeBuilder.from_dynamic_union(union_schema, dynamic_classes, schema_descriptions)
     end
 
     defp build_type_builder(output_schema, _dynamic_classes, schema_descriptions) do
