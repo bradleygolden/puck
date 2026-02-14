@@ -40,12 +40,14 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     """
     def from_schema(zoi_schema, opts \\ []) do
       name = Keyword.get(opts, :name, "DynamicOutput")
+      descriptions = Keyword.get(opts, :descriptions, %{})
 
       json_schema =
         zoi_schema
         |> normalize_schema()
         |> Zoi.to_json_schema()
         |> Map.delete(:"$schema")
+        |> inject_descriptions(descriptions)
 
       {ref, state} = convert(json_schema, name, %{types: []})
       state = maybe_add_root_union(ref, name, state)
@@ -76,6 +78,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     defp convert(%{type: :object, properties: props} = schema, name, state)
          when is_map(props) do
       required = Map.get(schema, :required, [])
+      schema_description = Map.get(schema, :description)
 
       {fields, state} =
         props
@@ -84,6 +87,14 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           field_name_str = to_string(field_name)
           child_name = name <> pascal_case(field_name_str)
           description = Map.get(field_schema, :description)
+
+          description =
+            if is_nil(description) and schema_description != nil and
+                 discriminator_field?(field_name, field_schema) do
+              schema_description
+            else
+              description
+            end
 
           {type_ref, state_acc} = convert(field_schema, child_name, state_acc)
 
@@ -147,7 +158,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
             variants
             |> Enum.with_index()
             |> Enum.reduce({[], state}, fn {variant, idx}, {refs_acc, state_acc} ->
-              variant_name = "#{name}Variant#{idx}"
+              variant_name = infer_variant_name(variant, name, idx)
               {ref, state_acc} = convert(variant, variant_name, state_acc)
               {[ref | refs_acc], state_acc}
             end)
@@ -182,6 +193,48 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     defp maybe_add_root_union(_ref, _name, state), do: state
 
     defp add_type(state, type), do: %{state | types: [type | state.types]}
+
+    defp discriminator_field?(field_name, %{enum: [_]}),
+      do: field_name in [:type, "type"]
+
+    defp discriminator_field?(field_name, %{const: _}),
+      do: field_name in [:type, "type"]
+
+    defp discriminator_field?(_, _), do: false
+
+    defp inject_descriptions(%{anyOf: variants} = schema, descriptions)
+         when map_size(descriptions) > 0 do
+      updated =
+        Enum.map(variants, fn variant ->
+          case extract_discriminator(Map.get(variant, :properties, %{})) do
+            nil -> variant
+            disc -> Map.put(variant, :description, Map.get(descriptions, disc, nil))
+          end
+        end)
+
+      %{schema | anyOf: updated}
+    end
+
+    defp inject_descriptions(schema, _descriptions), do: schema
+
+    defp infer_variant_name(%{type: :object, properties: props}, name, idx) do
+      case extract_discriminator(props) do
+        nil -> "#{name}Variant#{idx}"
+        disc_value -> name <> pascal_case(disc_value)
+      end
+    end
+
+    defp infer_variant_name(_variant, name, idx), do: "#{name}Variant#{idx}"
+
+    defp extract_discriminator(props) when is_map(props) do
+      case Map.get(props, :type) || Map.get(props, "type") do
+        %{enum: [value]} when is_binary(value) -> value
+        %{const: value} when is_binary(value) -> value
+        _ -> nil
+      end
+    end
+
+    defp extract_discriminator(_), do: nil
 
     defp pascal_case(str) do
       str

@@ -182,7 +182,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         assert %TB.Union{types: ["string", "int"]} = type
       end
 
-      test "converts union of objects to named classes with root union" do
+      test "converts tagged union of objects to named classes derived from discriminator" do
         schema =
           Zoi.union([
             Zoi.object(%{type: Zoi.literal("a"), name: Zoi.string()}),
@@ -192,13 +192,13 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         types = TypeBuilder.from_schema(schema)
 
         class_names = Enum.filter(types, &match?(%TB.Class{}, &1)) |> Enum.map(& &1.name)
-        assert "DynamicOutputVariant0" in class_names
-        assert "DynamicOutputVariant1" in class_names
+        assert "DynamicOutputA" in class_names
+        assert "DynamicOutputB" in class_names
 
         root_union = Enum.find(types, &match?(%TB.Union{name: "DynamicOutput"}, &1))
         assert %TB.Union{name: "DynamicOutput", types: types} = root_union
-        assert "DynamicOutputVariant0" in types
-        assert "DynamicOutputVariant1" in types
+        assert "DynamicOutputA" in types
+        assert "DynamicOutputB" in types
       end
 
       test "root union of primitives produces named union" do
@@ -215,7 +215,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         assert [%TB.Union{name: "PluginAction", types: ["string", "int"]}] = types
       end
 
-      test "root union of structs (plugin action pattern)" do
+      test "root union of structs uses discriminator for variant names" do
         schema =
           Zoi.union([
             Zoi.object(%{type: Zoi.literal("get_skill"), name: Zoi.string()}),
@@ -224,11 +224,26 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
         types = TypeBuilder.from_schema(schema, name: "PluginAction")
 
-        variant_classes = Enum.filter(types, &match?(%TB.Class{}, &1))
-        assert length(variant_classes) == 2
+        class_names = Enum.filter(types, &match?(%TB.Class{}, &1)) |> Enum.map(& &1.name)
+        assert "PluginActionGetSkill" in class_names
+        assert "PluginActionSearch" in class_names
 
         root_union = Enum.find(types, &match?(%TB.Union{name: "PluginAction"}, &1))
         assert %TB.Union{name: "PluginAction"} = root_union
+      end
+
+      test "non-discriminated union falls back to VariantN naming" do
+        schema =
+          Zoi.union([
+            Zoi.object(%{name: Zoi.string()}),
+            Zoi.object(%{count: Zoi.integer()})
+          ])
+
+        types = TypeBuilder.from_schema(schema)
+        class_names = Enum.filter(types, &match?(%TB.Class{}, &1)) |> Enum.map(& &1.name)
+
+        assert "DynamicOutputVariant0" in class_names
+        assert "DynamicOutputVariant1" in class_names
       end
 
       test "nested union inside object field does not produce extra named union" do
@@ -331,6 +346,27 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           TypeBuilder.from_schema(schema)
 
         assert is_nil(description)
+      end
+
+      test "injects descriptions into tagged union variants via descriptions option" do
+        schema =
+          Zoi.union([
+            Zoi.object(%{type: Zoi.literal("list_skills"), query: Zoi.string()}),
+            Zoi.object(%{type: Zoi.literal("search"), term: Zoi.string()})
+          ])
+
+        types =
+          TypeBuilder.from_schema(schema,
+            descriptions: %{"list_skills" => "Lists all available skills"}
+          )
+
+        list_class = Enum.find(types, &match?(%TB.Class{name: "DynamicOutputListSkills"}, &1))
+        type_field = Enum.find(list_class.fields, &(&1.name == "type"))
+        assert type_field.description == "Lists all available skills"
+
+        search_class = Enum.find(types, &match?(%TB.Class{name: "DynamicOutputSearch"}, &1))
+        search_type_field = Enum.find(search_class.fields, &(&1.name == "type"))
+        assert is_nil(search_type_field.description)
       end
     end
 

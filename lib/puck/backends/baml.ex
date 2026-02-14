@@ -162,24 +162,27 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
       if output_schema do
         dynamic_classes = Map.get(opts, :dynamic_classes, %{})
+        schema_descriptions = Map.get(opts, :schema_descriptions, %{})
 
         opts
         |> Map.delete(:dynamic_classes)
+        |> Map.delete(:schema_descriptions)
         |> Map.put(:parse, false)
-        |> Map.put(:tb, build_type_builder(output_schema, dynamic_classes))
+        |> Map.put(:tb, build_type_builder(output_schema, dynamic_classes, schema_descriptions))
       else
         opts
       end
     end
 
-    defp build_type_builder(output_schema, dynamic_classes)
+    defp build_type_builder(output_schema, dynamic_classes, schema_descriptions)
          when map_size(dynamic_classes) == 0 do
-      TypeBuilder.from_schema(output_schema)
+      TypeBuilder.from_schema(output_schema, descriptions: schema_descriptions)
     end
 
     defp build_type_builder(
            %Zoi.Types.Union{schemas: schemas},
-           dynamic_classes
+           dynamic_classes,
+           _schema_descriptions
          ) do
       dynamic_modules =
         dynamic_classes
@@ -212,8 +215,8 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end)
     end
 
-    defp build_type_builder(output_schema, _dynamic_classes) do
-      TypeBuilder.from_schema(output_schema)
+    defp build_type_builder(output_schema, _dynamic_classes, schema_descriptions) do
+      TypeBuilder.from_schema(output_schema, descriptions: schema_descriptions)
     end
 
     defp build_response(result, config, output_schema, usage) do
