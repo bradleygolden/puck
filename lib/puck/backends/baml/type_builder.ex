@@ -91,7 +91,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           # Promote schema-level description to the discriminator type field
           description =
             if is_nil(description) and schema_description != nil and
-                 is_discriminator_field?(field_name, field_schema) do
+                 discriminator_field?(field_name, field_schema) do
               schema_description
             else
               description
@@ -195,10 +195,10 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     defp add_type(state, type), do: %{state | types: [type | state.types]}
 
-    defp is_discriminator_field?(field_name, %{enum: [_]}),
+    defp discriminator_field?(field_name, %{enum: [_]}),
       do: field_name in [:type, "type"]
 
-    defp is_discriminator_field?(_, _), do: false
+    defp discriminator_field?(_, _), do: false
 
     defp inject_descriptions(%{anyOf: variants} = schema, descriptions)
          when map_size(descriptions) > 0 do
