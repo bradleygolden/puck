@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- BAML TypeBuilder generates meaningful variant names from tagged unions (e.g., `PluginActionGetSkill` instead of `PluginActionVariant0`)
+- BAML TypeBuilder accepts a `descriptions` option to attach human-readable descriptions to union variants
+
+### Fixed
+
+- BAML TypeBuilder now correctly recognizes literal discriminator fields in JSON schema
+
 ## [0.2.14] - 2026-02-14
 
 ### Added
