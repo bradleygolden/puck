@@ -198,6 +198,9 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     defp discriminator_field?(field_name, %{enum: [_]}),
       do: field_name in [:type, "type"]
 
+    defp discriminator_field?(field_name, %{const: _}),
+      do: field_name in [:type, "type"]
+
     defp discriminator_field?(_, _), do: false
 
     defp inject_descriptions(%{anyOf: variants} = schema, descriptions)
@@ -227,6 +230,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     defp extract_discriminator(props) when is_map(props) do
       case Map.get(props, :type) || Map.get(props, "type") do
         %{enum: [value]} when is_binary(value) -> value
+        %{const: value} when is_binary(value) -> value
         _ -> nil
       end
     end
