@@ -393,5 +393,134 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         assert Enum.any?(types, &(&1.name == "DynamicOutputHomeAddress"))
       end
     end
+
+    describe "from_dynamic_union/3" do
+      defmodule ActionA do
+        defstruct type: "action_a", name: nil
+      end
+
+      defmodule ActionB do
+        defstruct type: "action_b", count: nil
+      end
+
+      defp union_schema do
+        Zoi.union([
+          Zoi.struct(ActionA, %{
+            type: Zoi.enum(["action_a"]),
+            name: Zoi.string()
+          }),
+          Zoi.struct(ActionB, %{
+            type: Zoi.enum(["action_b"]),
+            count: Zoi.integer()
+          })
+        ])
+      end
+
+      defp dynamic_classes do
+        %{"PluginAction" => [ActionA, ActionB]}
+      end
+
+      test "emits a TB.Enum for the type discriminator" do
+        result = TypeBuilder.from_dynamic_union(union_schema(), dynamic_classes())
+
+        type_enum = Enum.find(result, &match?(%TB.Enum{}, &1))
+        assert %TB.Enum{name: "PluginActionType"} = type_enum
+
+        values = Enum.map(type_enum.values, & &1.value)
+        assert "action_a" in values
+        assert "action_b" in values
+      end
+
+      test "emits a TB.Class with non-type fields as string | null" do
+        result = TypeBuilder.from_dynamic_union(union_schema(), dynamic_classes())
+
+        class = Enum.find(result, &match?(%TB.Class{}, &1))
+        assert %TB.Class{name: "PluginAction", fields: fields} = class
+
+        field_names = Enum.map(fields, & &1.name)
+        assert "name" in field_names
+        assert "count" in field_names
+        refute "type" in field_names
+
+        for field <- fields do
+          assert %TB.Union{types: [:string, :null]} = field.type
+        end
+      end
+
+      test "attaches descriptions to enum values from schema_descriptions" do
+        descriptions = %{
+          "action_a" => "Performs action A",
+          "action_b" => "Performs action B"
+        }
+
+        result =
+          TypeBuilder.from_dynamic_union(union_schema(), dynamic_classes(), descriptions)
+
+        type_enum = Enum.find(result, &match?(%TB.Enum{}, &1))
+
+        a_value = Enum.find(type_enum.values, &(&1.value == "action_a"))
+        b_value = Enum.find(type_enum.values, &(&1.value == "action_b"))
+
+        assert a_value.description == "Performs action A"
+        assert b_value.description == "Performs action B"
+      end
+
+      test "enum values have nil descriptions when schema_descriptions is empty" do
+        result = TypeBuilder.from_dynamic_union(union_schema(), dynamic_classes())
+
+        type_enum = Enum.find(result, &match?(%TB.Enum{}, &1))
+
+        for ev <- type_enum.values do
+          assert is_nil(ev.description)
+        end
+      end
+
+      test "returns both enum and class per dynamic class entry" do
+        result = TypeBuilder.from_dynamic_union(union_schema(), dynamic_classes())
+
+        assert length(result) == 2
+        assert Enum.count(result, &match?(%TB.Enum{}, &1)) == 1
+        assert Enum.count(result, &match?(%TB.Class{}, &1)) == 1
+      end
+
+      test "handles multiple dynamic class groups" do
+        classes = %{
+          "PluginAction" => [ActionA, ActionB],
+          "OtherAction" => [ActionA]
+        }
+
+        result = TypeBuilder.from_dynamic_union(union_schema(), classes)
+
+        enum_names =
+          result |> Enum.filter(&match?(%TB.Enum{}, &1)) |> Enum.map(& &1.name)
+
+        class_names =
+          result |> Enum.filter(&match?(%TB.Class{}, &1)) |> Enum.map(& &1.name)
+
+        assert "PluginActionType" in enum_names
+        assert "OtherActionType" in enum_names
+        assert "PluginAction" in class_names
+        assert "OtherAction" in class_names
+      end
+
+      test "skips schemas not in dynamic_classes" do
+        schema =
+          Zoi.union([
+            Zoi.struct(ActionA, %{type: Zoi.enum(["action_a"]), name: Zoi.string()}),
+            Zoi.struct(ActionB, %{type: Zoi.enum(["action_b"]), count: Zoi.integer()})
+          ])
+
+        only_a = %{"PluginAction" => [ActionA]}
+        result = TypeBuilder.from_dynamic_union(schema, only_a)
+
+        type_enum = Enum.find(result, &match?(%TB.Enum{}, &1))
+        values = Enum.map(type_enum.values, & &1.value)
+        assert values == ["action_a"]
+
+        class = Enum.find(result, &match?(%TB.Class{}, &1))
+        field_names = Enum.map(class.fields, & &1.name)
+        assert field_names == ["name"]
+      end
+    end
   end
 end
