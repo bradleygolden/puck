@@ -182,7 +182,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         assert %TB.Union{types: ["string", "int"]} = type
       end
 
-      test "converts union of objects to named classes" do
+      test "converts union of objects to named classes with root union" do
         schema =
           Zoi.union([
             Zoi.object(%{type: Zoi.literal("a"), name: Zoi.string()}),
@@ -194,6 +194,60 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         class_names = Enum.filter(types, &match?(%TB.Class{}, &1)) |> Enum.map(& &1.name)
         assert "DynamicOutputVariant0" in class_names
         assert "DynamicOutputVariant1" in class_names
+
+        root_union = Enum.find(types, &match?(%TB.Union{name: "DynamicOutput"}, &1))
+        assert %TB.Union{name: "DynamicOutput", types: types} = root_union
+        assert "DynamicOutputVariant0" in types
+        assert "DynamicOutputVariant1" in types
+      end
+
+      test "root union of primitives produces named union" do
+        schema = Zoi.union([Zoi.string(), Zoi.integer()])
+        types = TypeBuilder.from_schema(schema)
+
+        assert [%TB.Union{name: "DynamicOutput", types: ["string", "int"]}] = types
+      end
+
+      test "root union respects custom :name option" do
+        schema = Zoi.union([Zoi.string(), Zoi.integer()])
+        types = TypeBuilder.from_schema(schema, name: "PluginAction")
+
+        assert [%TB.Union{name: "PluginAction", types: ["string", "int"]}] = types
+      end
+
+      test "root union of structs (plugin action pattern)" do
+        schema =
+          Zoi.union([
+            Zoi.object(%{type: Zoi.literal("get_skill"), name: Zoi.string()}),
+            Zoi.object(%{type: Zoi.literal("search"), query: Zoi.string()})
+          ])
+
+        types = TypeBuilder.from_schema(schema, name: "PluginAction")
+
+        variant_classes = Enum.filter(types, &match?(%TB.Class{}, &1))
+        assert length(variant_classes) == 2
+
+        root_union = Enum.find(types, &match?(%TB.Union{name: "PluginAction"}, &1))
+        assert %TB.Union{name: "PluginAction"} = root_union
+      end
+
+      test "nested union inside object field does not produce extra named union" do
+        schema =
+          Zoi.object(%{
+            value: Zoi.union([Zoi.string(), Zoi.integer()])
+          })
+
+        types = TypeBuilder.from_schema(schema)
+        assert [%TB.Class{name: "DynamicOutput"}] = types
+        refute Enum.any?(types, &match?(%TB.Union{name: _}, &1))
+      end
+
+      test "root object does not produce extra union" do
+        schema = Zoi.object(%{name: Zoi.string()})
+        types = TypeBuilder.from_schema(schema)
+
+        assert [%TB.Class{name: "DynamicOutput"}] = types
+        refute Enum.any?(types, &match?(%TB.Union{}, &1))
       end
     end
 

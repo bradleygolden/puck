@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- BAML backend now registers root union types in `TypeBuilder`, fixing top-level union schemas (e.g., plugin actions) where fields beyond `type` were silently dropped
 - Replaced deprecated `strict: true` with `unrecognized_keys: :error` for Zoi 0.17 compatibility
 - Lua sandbox callbacks now receive maps when Lua passes table arguments (previously returned opaque internal references)
 
