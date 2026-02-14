@@ -88,7 +88,6 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           child_name = name <> pascal_case(field_name_str)
           description = Map.get(field_schema, :description)
 
-          # Promote schema-level description to the discriminator type field
           description =
             if is_nil(description) and schema_description != nil and
                  discriminator_field?(field_name, field_schema) do
