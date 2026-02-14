@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-02-14
+
 ### Added
 
 - BAML backend now auto-builds `TypeBuilder` from `output_schema`, giving BAML's Rust runtime full knowledge of dynamic types for Schema-Aligned Parsing and `ctx.output_format` prompt formatting
+- BAML backend accepts `dynamic_classes` option to register `@@dynamic` class fields in TypeBuilder, enabling callers to declare runtime-only fields for BAML parsing
 
 ### Fixed
 
@@ -20,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Bumped `zoi` dependency from `~> 0.7` to `~> 0.17`
+- Bumped `baml_elixir` dependency to `~> 1.0.0-pre.24.next.2` (`baml_elixir_next`) for TypeBuilder nullable union support
 
 ## [0.2.13] - 2026-02-08
 
