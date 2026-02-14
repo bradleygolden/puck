@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- BAML backend now strips `__baml_class__` and `__baml_enum__` metadata from NIF results before Zoi parsing, fixing struct parsing failures when `output_schema` is used
+
 ## [0.2.15] - 2026-02-14
 
 ### Added
