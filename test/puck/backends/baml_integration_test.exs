@@ -103,6 +103,45 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
     end
 
+    describe "output_schema NIF normalization (issue #22)" do
+      defmodule LookupContact do
+        @moduledoc false
+        defstruct type: nil, name: nil
+      end
+
+      @tag timeout: 60_000
+      test "strips __baml_class__ metadata so Zoi can parse struct" do
+        schema =
+          Zoi.struct(
+            LookupContact,
+            %{type: Zoi.string(), name: Zoi.string()},
+            coerce: true
+          )
+
+        client =
+          Puck.Client.new(
+            {Puck.Backends.Baml, function: "ChooseTool", path: "test/support/baml_src"}
+          )
+
+        {:ok, response, _ctx} =
+          Puck.call(
+            client,
+            "Find Jane Doe in the CRM",
+            Puck.Context.new(),
+            output_schema: schema
+          )
+
+        assert response.metadata.provider == "baml"
+        assert response.metadata.function == "ChooseTool"
+
+        assert %LookupContact{} = response.content,
+               "Expected a LookupContact struct but got: #{inspect(response.content)}"
+
+        assert is_binary(response.content.type)
+        assert is_binary(response.content.name)
+      end
+    end
+
     defp check_ollama_available do
       url = "http://localhost:11434/api/tags"
 
