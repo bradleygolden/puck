@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - BAML backend now strips `__baml_class__` and `__baml_enum__` metadata from NIF results before Zoi parsing, fixing struct parsing failures when `output_schema` is used
+- BAML `dynamic_classes` TypeBuilder now emits a proper `TB.Enum` with per-value descriptions for type discriminators, fixing plugin actions being collapsed to `{ type: string }` in the rendered prompt
 
 ## [0.2.15] - 2026-02-14
 

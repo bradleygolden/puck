@@ -182,7 +182,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     defp build_type_builder(
            %Zoi.Types.Union{schemas: schemas},
            dynamic_classes,
-           _schema_descriptions
+           schema_descriptions
          ) do
       dynamic_modules =
         dynamic_classes
@@ -190,12 +190,23 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         |> List.flatten()
         |> MapSet.new()
 
-      dynamic_fields =
-        schemas
-        |> Enum.filter(fn
+      dynamic_schemas =
+        Enum.filter(schemas, fn
           %Zoi.Types.Struct{module: mod} -> mod in dynamic_modules
           _ -> false
         end)
+
+      type_values =
+        Enum.flat_map(dynamic_schemas, fn %Zoi.Types.Struct{fields: fields} ->
+          case Keyword.get(fields, :type) do
+            %Zoi.Types.Enum{values: [{value, _} | _]} -> [value]
+            %Zoi.Types.Enum{values: [value | _]} when is_binary(value) -> [value]
+            _ -> []
+          end
+        end)
+
+      dynamic_fields =
+        dynamic_schemas
         |> Enum.flat_map(fn %Zoi.Types.Struct{fields: fields} ->
           fields
           |> Keyword.keys()
@@ -204,14 +215,31 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         end)
         |> Enum.uniq()
 
-      Enum.map(dynamic_classes, fn {class_name, _modules} ->
-        %TB.Class{
-          name: class_name,
-          fields:
-            Enum.map(dynamic_fields, fn name ->
-              %TB.Field{name: name, type: %TB.Union{types: [:string, :null]}}
+      Enum.flat_map(dynamic_classes, fn {class_name, _modules} ->
+        type_enum_name = class_name <> "Type"
+
+        type_enum = %TB.Enum{
+          name: type_enum_name,
+          values:
+            Enum.map(type_values, fn value ->
+              %TB.EnumValue{
+                value: value,
+                description: Map.get(schema_descriptions, value)
+              }
             end)
         }
+
+        other_fields =
+          Enum.map(dynamic_fields, fn name ->
+            %TB.Field{name: name, type: %TB.Union{types: [:string, :null]}}
+          end)
+
+        class = %TB.Class{
+          name: class_name,
+          fields: other_fields
+        }
+
+        [type_enum, class]
       end)
     end
 
