@@ -45,7 +45,7 @@ defmodule Puck.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"},
-      {:baml_elixir, "~> 1.0.0-pre.24", optional: true},
+      {:baml_elixir, "~> 1.0.0-pre.24.next.2", hex: :baml_elixir_next, optional: true},
       {:claude_agent_sdk, "~> 0.11", optional: true},
       {:plug, "~> 1.15", optional: true},
       {:req, "~> 0.5", optional: true},
