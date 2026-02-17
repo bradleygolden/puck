@@ -101,7 +101,6 @@ defmodule Puck do
     Runtime.stream(client, content, context, opts)
   end
 
-  # Detect messages format (has :role key) and build context from conversation history
   defp build_context_from_content(content, base_context \\ Context.new())
 
   defp build_context_from_content([%{role: _} | _] = messages, base_context) do

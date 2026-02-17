@@ -136,8 +136,6 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     defp normalize_schema(schema), do: schema
 
-    # --- Convert dispatch ---
-
     # String enum — must precede plain string match
     defp convert(%{type: :string, enum: values}, name, state) do
       enum_type = %TB.Enum{
@@ -148,7 +146,6 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       {name, add_type(state, enum_type)}
     end
 
-    # Object with properties
     defp convert(%{type: :object, properties: props} = schema, name, state)
          when is_map(props) do
       required = Map.get(schema, :required, [])
@@ -192,35 +189,29 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       {name, add_type(state, class)}
     end
 
-    # Generic object (no properties)
     defp convert(%{type: :object}, _name, state) do
       {%TB.Map{key_type: "string", value_type: "string"}, state}
     end
 
-    # Array with items
     defp convert(%{type: :array, items: items}, name, state) do
       {inner_ref, state} = convert(items, name, state)
       {%TB.List{type: inner_ref}, state}
     end
 
-    # Array without items
     defp convert(%{type: :array}, _name, state) do
       {%TB.List{type: "string"}, state}
     end
 
-    # Primitives
     defp convert(%{type: :string}, _name, state), do: {"string", state}
     defp convert(%{type: :integer}, _name, state), do: {"int", state}
     defp convert(%{type: :number}, _name, state), do: {"float", state}
     defp convert(%{type: :boolean}, _name, state), do: {"bool", state}
     defp convert(%{type: :null}, _name, state), do: {"null", state}
 
-    # Literal
     defp convert(%{const: value}, _name, state) do
       {%TB.Literal{value: value}, state}
     end
 
-    # anyOf — nullable or general union
     defp convert(%{anyOf: variants}, name, state) do
       case extract_nullable(variants) do
         {:nullable, inner} ->
@@ -240,8 +231,6 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           {%TB.Union{types: Enum.reverse(type_refs)}, state}
       end
     end
-
-    # --- Helpers ---
 
     defp extract_nullable(variants) do
       non_null = Enum.reject(variants, &match?(%{type: :null}, &1))
