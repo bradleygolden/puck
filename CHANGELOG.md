@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.18] - 2026-02-17
+
 ### Added
 
 - `[:puck, :backend, :baml, :error]` telemetry event emitted when the BAML backend returns an error, with the raw LLM response included in metadata for debugging
