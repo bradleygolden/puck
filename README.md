@@ -657,11 +657,16 @@ Puck.Telemetry.attach_default_logger(level: :info)
 | `[:puck, :call, :start]` | Before LLM call |
 | `[:puck, :call, :stop]` | After successful call |
 | `[:puck, :call, :exception]` | On call failure |
+| `[:puck, :backend, :baml, :error]` | BAML backend error with raw LLM response |
 | `[:puck, :stream, :start]` | Before streaming |
 | `[:puck, :stream, :chunk]` | Each streamed chunk |
 | `[:puck, :stream, :stop]` | After streaming completes |
+| `[:puck, :stream, :exception]` | On streaming failure |
+| `[:puck, :backend, :request]` | Before backend request |
+| `[:puck, :backend, :response]` | After backend response |
 | `[:puck, :compaction, :start]` | Before compaction |
 | `[:puck, :compaction, :stop]` | After compaction |
+| `[:puck, :compaction, :error]` | Compaction failed |
 | `[:puck, :live_view, :stream, :start]` | Before LiveView stream |
 | `[:puck, :live_view, :stream, :stop]` | After LiveView stream completes |
 | `[:puck, :live_view, :stream, :error]` | LiveView stream failed |
