@@ -316,6 +316,7 @@ if Code.ensure_loaded?(:telemetry) do
         assert [:puck, :stream, :stop] in names
         assert [:puck, :backend, :request] in names
         assert [:puck, :backend, :response] in names
+        assert [:puck, :backend, :baml, :error] in names
       end
 
       test "includes compaction events" do
