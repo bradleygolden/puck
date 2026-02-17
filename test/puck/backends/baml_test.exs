@@ -43,6 +43,17 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
     end
 
+    describe "extract_raw_response/1" do
+      test "returns nil for unused collector" do
+        collector = BamlElixir.Collector.new("test-#{System.unique_integer([:positive])}")
+        assert is_nil(Baml.extract_raw_response(collector))
+      end
+
+      test "returns nil for nil collector" do
+        assert is_nil(Baml.extract_raw_response(nil))
+      end
+    end
+
     describe "NIF result normalization (issue #22)" do
       defmodule ActionA do
         @moduledoc false

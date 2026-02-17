@@ -135,6 +135,26 @@ if Code.ensure_loaded?(:telemetry) do
       * `:config` - The backend configuration.
       * `:response` - The backend response.
 
+    ### Backend BAML Error
+
+    `[:puck, :backend, :baml, :error]` — Emitted when the BAML backend returns
+    an error. Includes the raw LLM response from the collector so callers can
+    inspect what the model actually returned.
+
+    #### Measurements
+
+    No measurements.
+
+    #### Metadata
+
+      * `:function` - The BAML function name.
+      * `:reason` - The error reason (string from the NIF).
+      * `:raw_llm_response` - The raw LLM response string, or `nil` if unavailable.
+
+    > The `:raw_llm_response` value is the unredacted model output. If the
+    > prompt contained sensitive data, the response may echo it back. Redact
+    > before logging in production.
+
     ### Compaction Start
 
     `[:puck, :compaction, :start]` - Executed before context compaction.
@@ -280,6 +300,7 @@ if Code.ensure_loaded?(:telemetry) do
         [:puck, :stream, :exception],
         [:puck, :backend, :request],
         [:puck, :backend, :response],
+        [:puck, :backend, :baml, :error],
         [:puck, :compaction, :start],
         [:puck, :compaction, :stop],
         [:puck, :compaction, :error],

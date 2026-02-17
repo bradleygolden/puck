@@ -27,12 +27,17 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           args: %{categories: ["question", "statement", "command"]}
         })
 
+    ## Telemetry
+
+    When a call or stream returns an error, this backend emits a
+    `[:puck, :backend, :baml, :error]` event. See `Puck.Telemetry` for details.
     """
 
     @behaviour Puck.Backend
 
     alias Puck.Backends.Baml.TypeBuilder
     alias Puck.{Message, Response}
+    alias Puck.Runtime.Telemetry, as: T
 
     @impl true
     def call(config, messages, opts) do
@@ -52,6 +57,12 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           {:ok, build_response(result, config, output_schema, usage)}
 
         {:error, reason} ->
+          T.event([:backend, :baml, :error], %{}, %{
+            function: function_name,
+            reason: reason,
+            raw_llm_response: extract_raw_response(collector)
+          })
+
           {:error, reason}
       end
     end
@@ -74,7 +85,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       stream =
         Stream.resource(
           fn -> start_stream(caller, ref, function_name, args, baml_opts) end,
-          fn state -> receive_chunks(state, ref, output_schema) end,
+          fn state -> receive_chunks(state, ref, output_schema, collector, function_name) end,
           fn _state -> :ok end
         )
 
@@ -206,6 +217,16 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       )
     end
 
+    @doc false
+    def extract_raw_response(nil), do: nil
+
+    def extract_raw_response(collector) do
+      case BamlElixir.Collector.last_function_log(collector) do
+        %{"raw_llm_response" => raw} -> raw
+        _ -> nil
+      end
+    end
+
     defp extract_collector_usage(collector) do
       case BamlElixir.Collector.usage(collector) do
         %{} = usage ->
@@ -273,11 +294,11 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       :streaming
     end
 
-    defp receive_chunks(:done, _ref, _output_schema) do
+    defp receive_chunks(:done, _ref, _output_schema, _collector, _function_name) do
       {:halt, :done}
     end
 
-    defp receive_chunks(:streaming, ref, output_schema) do
+    defp receive_chunks(:streaming, ref, output_schema, collector, function_name) do
       receive do
         {^ref, {:chunk, result}} ->
           parsed = maybe_parse_schema(output_schema, result)
@@ -290,6 +311,12 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           {[chunk], :done}
 
         {^ref, {:error, reason}} ->
+          T.event([:backend, :baml, :error], %{}, %{
+            function: function_name,
+            reason: reason,
+            raw_llm_response: extract_raw_response(collector)
+          })
+
           raise "BAML stream error: #{inspect(reason)}"
       after
         30_000 ->
