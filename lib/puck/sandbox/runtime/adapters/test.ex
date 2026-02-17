@@ -83,8 +83,6 @@ defmodule Puck.Sandbox.Runtime.Adapters.Test do
     end)
   end
 
-  # Adapter callbacks
-
   @impl true
   def create(config) do
     id = "test-sandbox-#{System.unique_integer([:positive])}"

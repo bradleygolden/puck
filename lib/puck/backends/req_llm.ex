@@ -62,7 +62,6 @@ if Code.ensure_loaded?(ReqLLM) do
     end
 
     defp call_with_schema(model, messages, output_schema, options) do
-      # Convert struct schemas to object schemas for LLM (struct schemas can't be JSON encoded)
       llm_schema = to_llm_schema(output_schema)
 
       case ReqLLM.generate_object(model, messages, llm_schema, options) do
@@ -183,8 +182,6 @@ if Code.ensure_loaded?(ReqLLM) do
         capabilities: [:streaming, :multi_provider]
       }
     end
-
-    # Private helpers
 
     defp build_options(config, backend_opts) do
       config

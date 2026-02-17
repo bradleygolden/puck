@@ -109,10 +109,8 @@ if Code.ensure_loaded?(Plug) do
     defp forward_request(conn, target_url, host, config) do
       {:ok, body, conn} = read_body(conn)
 
-      # Get credentials for this domain
       domain_credentials = Map.get(config.credentials, host, [])
 
-      # Build headers: original headers + credentials (credentials override)
       original_headers =
         conn.req_headers
         |> Enum.reject(fn {name, _} ->
