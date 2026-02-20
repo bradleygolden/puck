@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-02-20
+
 ### Fixed
 
-- BAML backend now enriches collector usage with provider response usage/body/header fields, including cache metrics such as `cache_read_input_tokens` when available.
+- BAML backend now enriches collector usage with provider response usage/body/header fields, including cache metrics such as `cache_read_input_tokens` when available
+- Fixed `map_get/2` dropping legitimate falsy values like `0` from usage maps
 
 ## [0.2.19] - 2026-02-20
 
@@ -228,7 +231,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.17...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.20...HEAD
+[0.2.20]: https://github.com/bradleygolden/puck/compare/v0.2.19...v0.2.20
+[0.2.19]: https://github.com/bradleygolden/puck/compare/v0.2.18...v0.2.19
+[0.2.18]: https://github.com/bradleygolden/puck/compare/v0.2.17...v0.2.18
 [0.2.17]: https://github.com/bradleygolden/puck/compare/v0.2.16...v0.2.17
 [0.2.16]: https://github.com/bradleygolden/puck/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/bradleygolden/puck/compare/v0.2.14...v0.2.15

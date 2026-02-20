@@ -415,21 +415,30 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     defp map_get(nil, _key), do: nil
 
     defp map_get(map, key) when is_map(map) and is_atom(key) do
-      Map.get(map, key) || Map.get(map, to_string(key))
+      case Map.get(map, key) do
+        nil -> Map.get(map, to_string(key))
+        value -> value
+      end
     end
 
     defp map_get(map, key) when is_map(map) and is_binary(key) do
-      Map.get(map, key) ||
-        Enum.find_value(map, fn
-          {map_key, value} when is_atom(map_key) ->
-            if Atom.to_string(map_key) == key, do: value, else: nil
-
-          _ ->
-            nil
-        end)
+      case Map.get(map, key) do
+        nil -> map_get_by_atom_key(map, key)
+        value -> value
+      end
     end
 
     defp map_get(_map, _key), do: nil
+
+    defp map_get_by_atom_key(map, key) do
+      Enum.find_value(map, fn
+        {map_key, value} when is_atom(map_key) ->
+          if Atom.to_string(map_key) == key, do: value, else: nil
+
+        _ ->
+          nil
+      end)
+    end
 
     defp parse_integer(value) when is_integer(value), do: value
     defp parse_integer(value) when is_float(value), do: trunc(value)
