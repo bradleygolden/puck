@@ -312,34 +312,34 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     defp extract_call_usage(_), do: %{}
 
     defp extract_response_body_usage(call) do
-      with %{} = response <- map_get(call, "response") do
-        response_usage =
-          case map_get(response, "usage") do
-            %{} = usage -> usage
-            _ -> %{}
-          end
+      case map_get(call, "response") do
+        %{} = response ->
+          merge_usage(
+            extract_usage_from_map(response),
+            response |> map_get("body") |> extract_usage_from_body()
+          )
 
-        body_usage =
-          case map_get(response, "body") do
-            body when is_binary(body) ->
-              case Jason.decode(body) do
-                {:ok, decoded_body} -> map_get(decoded_body, "usage") || %{}
-                _ -> %{}
-              end
-
-            %{} = decoded_body ->
-              map_get(decoded_body, "usage") || %{}
-
-            _ ->
-              %{}
-          end
-
-        merge_usage(response_usage, body_usage)
-      else
         _ ->
           %{}
       end
     end
+
+    defp extract_usage_from_map(map) when is_map(map) do
+      case map_get(map, "usage") do
+        %{} = usage -> usage
+        _ -> %{}
+      end
+    end
+
+    defp extract_usage_from_body(body) when is_binary(body) do
+      case Jason.decode(body) do
+        {:ok, decoded_body} -> extract_usage_from_map(decoded_body)
+        _ -> %{}
+      end
+    end
+
+    defp extract_usage_from_body(%{} = decoded_body), do: extract_usage_from_map(decoded_body)
+    defp extract_usage_from_body(_), do: %{}
 
     defp add_canonical_usage_fields(usage) when is_map(usage) do
       usage
