@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-02-20
+
+### Fixed
+
+- BAML backend now preserves provider-specific usage fields (e.g., `cache_creation_input_tokens`, `cache_read_input_tokens`) returned by the LLM provider alongside the default `input_tokens` and `output_tokens`
+
 ## [0.2.18] - 2026-02-17
 
 ### Added
