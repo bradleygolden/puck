@@ -54,40 +54,6 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
     end
 
-    describe "normalize_collector_usage/1" do
-      test "preserves provider-specific string keys and guarantees base atom keys" do
-        usage = %{
-          "input_tokens" => 101,
-          "output_tokens" => 17,
-          "cache_read_input_tokens" => 80,
-          "cache_creation_input_tokens" => 50,
-          "cached_tokens" => 80
-        }
-
-        normalized = Baml.normalize_collector_usage(usage)
-
-        assert normalized[:input_tokens] == 101
-        assert normalized[:output_tokens] == 17
-        assert normalized["cache_read_input_tokens"] == 80
-        assert normalized["cache_creation_input_tokens"] == 50
-        assert normalized["cached_tokens"] == 80
-      end
-
-      test "keeps atom keys and defaults missing base token keys to zero" do
-        usage = %{
-          "cache_creation_input_tokens" => 4,
-          cache_read_input_tokens: 12
-        }
-
-        normalized = Baml.normalize_collector_usage(usage)
-
-        assert normalized[:cache_read_input_tokens] == 12
-        assert normalized["cache_creation_input_tokens"] == 4
-        assert normalized[:input_tokens] == 0
-        assert normalized[:output_tokens] == 0
-      end
-    end
-
     describe "NIF result normalization (issue #22)" do
       defmodule ActionA do
         @moduledoc false

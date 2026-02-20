@@ -237,8 +237,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
     end
 
-    @doc false
-    def normalize_collector_usage(usage) when is_map(usage) do
+    defp normalize_collector_usage(usage) when is_map(usage) do
       input_tokens = Map.get(usage, :input_tokens) || Map.get(usage, "input_tokens") || 0
       output_tokens = Map.get(usage, :output_tokens) || Map.get(usage, "output_tokens") || 0
 
