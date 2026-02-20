@@ -6,6 +6,12 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     alias Puck.Backends.Baml
     alias Puck.Message
 
+    setup_all do
+      Mimic.copy(BamlElixir.Client)
+      Mimic.copy(BamlElixir.Collector)
+      :ok
+    end
+
     describe "Puck.Backends.Baml" do
       test "implements Puck.Backend behaviour" do
         Code.ensure_loaded!(Baml)
