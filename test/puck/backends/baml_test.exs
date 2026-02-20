@@ -95,7 +95,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         assert response.usage["cache_read_input_tokens"] == 64
       end
 
-      test "falls back to Fireworks cache headers when cache fields are missing in usage body" do
+      test "infers canonical cache fields from generic usage aliases" do
         collector = :collector_ref
 
         expect(BamlElixir.Collector, :new, fn _name -> collector end)
@@ -113,8 +113,8 @@ if Code.ensure_loaded?(BamlElixir.Client) do
             "calls" => [
               %{
                 "response" => %{
-                  "body" => ~s({"usage":{"prompt_tokens":100}}),
-                  "headers" => %{"fireworks-cached-prompt-tokens" => "256"}
+                  "body" =>
+                    ~s({"usage":{"prompt_tokens":100,"input_token_details":{"cached_tokens":"256"},"cache":{"creation_input_tokens":7}}})
                 }
               }
             ]
@@ -125,9 +125,11 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
 
         assert response.usage["cache_read_input_tokens"] == 256
+        assert response.usage["cache_creation_input_tokens"] == 7
+        assert get_in(response.usage, ["input_token_details", "cached_tokens"]) == "256"
       end
 
-      test "does not override collector cache usage with inferred fallback values" do
+      test "does not override collector cache usage with inferred alias values" do
         collector = :collector_ref
 
         expect(BamlElixir.Collector, :new, fn _name -> collector end)
@@ -145,8 +147,8 @@ if Code.ensure_loaded?(BamlElixir.Client) do
             "calls" => [
               %{
                 "response" => %{
-                  "body" => ~s({"usage":{"prompt_tokens":100}}),
-                  "headers" => %{"fireworks-cached-prompt-tokens" => "256"}
+                  "body" =>
+                    ~s({"usage":{"prompt_tokens":100,"prompt_tokens_details":{"cached_tokens":256}}})
                 }
               }
             ]
@@ -157,6 +159,46 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
 
         assert response.usage["cache_read_input_tokens"] == 9
+      end
+
+      test "deep merges nested usage maps to preserve unknown provider fields" do
+        collector = :collector_ref
+
+        expect(BamlElixir.Collector, :new, fn _name -> collector end)
+
+        expect(BamlElixir.Client, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
+          {:ok, "ok"}
+        end)
+
+        expect(BamlElixir.Collector, :usage, fn ^collector ->
+          %{
+            "input_tokens" => 100,
+            "output_tokens" => 20,
+            "provider_meta" => %{"tier" => "priority"},
+            "prompt_tokens_details" => %{"custom_flag" => 1}
+          }
+        end)
+
+        expect(BamlElixir.Collector, :last_function_log, fn ^collector ->
+          %{
+            "calls" => [
+              %{
+                "response" => %{
+                  "body" =>
+                    ~s({"usage":{"prompt_tokens_details":{"cached_tokens":32},"provider_meta":{"region":"us-east"}}})
+                }
+              }
+            ]
+          }
+        end)
+
+        {:ok, response} =
+          Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
+
+        assert get_in(response.usage, ["provider_meta", "tier"]) == "priority"
+        assert get_in(response.usage, ["provider_meta", "region"]) == "us-east"
+        assert get_in(response.usage, ["prompt_tokens_details", "custom_flag"]) == 1
+        assert get_in(response.usage, ["prompt_tokens_details", "cached_tokens"]) == 32
       end
     end
 

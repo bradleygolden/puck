@@ -277,6 +277,26 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     defp extract_last_call_usage(_), do: %{}
 
+    @cache_read_usage_paths [
+      ["cache_read_input_tokens"],
+      ["cache_read_tokens"],
+      ["cached_tokens"],
+      ["prompt_tokens_details", "cached_tokens"],
+      ["input_token_details", "cached_tokens"],
+      ["cache", "read_input_tokens"],
+      ["cache", "read_tokens"]
+    ]
+
+    @cache_creation_usage_paths [
+      ["cache_creation_input_tokens"],
+      ["cache_write_input_tokens"],
+      ["cache_creation_tokens"],
+      ["prompt_tokens_details", "cache_creation_tokens"],
+      ["input_token_details", "cache_creation_tokens"],
+      ["cache", "creation_input_tokens"],
+      ["cache", "write_input_tokens"]
+    ]
+
     defp extract_call_usage(call) when is_map(call) do
       call_usage =
         case map_get(call, "usage") do
@@ -286,51 +306,92 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
       response_usage = extract_response_body_usage(call)
       usage = merge_usage(call_usage, response_usage)
-      maybe_add_cache_read_tokens(usage, call)
+      add_canonical_usage_fields(usage)
     end
 
     defp extract_call_usage(_), do: %{}
 
     defp extract_response_body_usage(call) do
-      with %{} = response <- map_get(call, "response"),
-           body when is_binary(body) <- map_get(response, "body"),
-           {:ok, decoded_body} <- Jason.decode(body),
-           %{} = usage <- map_get(decoded_body, "usage") do
-        usage
-      else
-        _ -> %{}
-      end
-    end
-
-    defp maybe_add_cache_read_tokens(usage, call) when is_map(usage) do
-      case infer_cache_read_tokens(usage, call) do
-        nil ->
-          usage
-
-        cache_read ->
-          if is_nil(map_get(usage, "cache_read_input_tokens")) do
-            Map.put(usage, "cache_read_input_tokens", cache_read)
-          else
-            usage
+      with %{} = response <- map_get(call, "response") do
+        response_usage =
+          case map_get(response, "usage") do
+            %{} = usage -> usage
+            _ -> %{}
           end
+
+        body_usage =
+          case map_get(response, "body") do
+            body when is_binary(body) ->
+              case Jason.decode(body) do
+                {:ok, decoded_body} -> map_get(decoded_body, "usage") || %{}
+                _ -> %{}
+              end
+
+            %{} = decoded_body ->
+              map_get(decoded_body, "usage") || %{}
+
+            _ ->
+              %{}
+          end
+
+        merge_usage(response_usage, body_usage)
+      else
+        _ ->
+          %{}
       end
     end
 
-    defp infer_cache_read_tokens(usage, call) do
-      parse_integer(map_get(usage, "cache_read_input_tokens")) ||
-        parse_integer(map_get(usage, "cached_tokens")) ||
-        parse_integer(usage |> map_get("prompt_tokens_details") |> map_get("cached_tokens")) ||
-        parse_integer(
-          call
-          |> map_get("response")
-          |> map_get("headers")
-          |> map_get("fireworks-cached-prompt-tokens")
-        )
+    defp add_canonical_usage_fields(usage) when is_map(usage) do
+      usage
+      |> put_usage_if_missing(
+        "cache_read_input_tokens",
+        infer_usage_value(usage, @cache_read_usage_paths)
+      )
+      |> put_usage_if_missing(
+        "cache_creation_input_tokens",
+        infer_usage_value(usage, @cache_creation_usage_paths)
+      )
     end
 
     defp merge_usage(primary, secondary) when is_map(primary) and is_map(secondary) do
-      Map.merge(primary, secondary, fn _key, left, right ->
-        if is_nil(left), do: right, else: left
+      Map.merge(secondary, primary, fn _key, secondary_value, primary_value ->
+        cond do
+          is_map(primary_value) and is_map(secondary_value) ->
+            merge_usage(primary_value, secondary_value)
+
+          is_nil(primary_value) ->
+            secondary_value
+
+          true ->
+            primary_value
+        end
+      end)
+    end
+
+    defp put_usage_if_missing(usage, _key, nil), do: usage
+
+    defp put_usage_if_missing(usage, key, value) do
+      if is_nil(map_get(usage, key)) do
+        Map.put(usage, key, value)
+      else
+        usage
+      end
+    end
+
+    defp infer_usage_value(usage, candidate_paths) do
+      Enum.find_value(candidate_paths, fn path ->
+        path
+        |> map_get_path(usage)
+        |> parse_integer()
+      end)
+    end
+
+    defp map_get_path(path, usage) when is_list(path) do
+      Enum.reduce_while(path, usage, fn key, acc ->
+        case map_get(acc, key) do
+          nil -> {:halt, nil}
+          value -> {:cont, value}
+        end
       end)
     end
 
