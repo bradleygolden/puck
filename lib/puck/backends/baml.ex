@@ -230,14 +230,28 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     defp extract_collector_usage(collector) do
       case BamlElixir.Collector.usage(collector) do
         %{} = usage ->
-          %{
-            input_tokens: usage["input_tokens"] || 0,
-            output_tokens: usage["output_tokens"] || 0
-          }
+          normalize_collector_usage(usage)
 
         _ ->
           %{}
       end
+    end
+
+    @doc false
+    def normalize_collector_usage(usage) when is_map(usage) do
+      input_tokens = Map.get(usage, :input_tokens) || Map.get(usage, "input_tokens") || 0
+      output_tokens = Map.get(usage, :output_tokens) || Map.get(usage, "output_tokens") || 0
+
+      usage
+      |> Enum.reduce(%{}, fn
+        {key, value}, acc when is_atom(key) or is_binary(key) ->
+          Map.put(acc, key, value)
+
+        {key, value}, acc ->
+          Map.put(acc, to_string(key), value)
+      end)
+      |> Map.put(:input_tokens, input_tokens)
+      |> Map.put(:output_tokens, output_tokens)
     end
 
     defp maybe_parse_schema(schema, result) when is_map(result) and not is_nil(schema) do
