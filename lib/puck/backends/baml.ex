@@ -45,22 +45,24 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       args = build_args(messages, config)
       output_schema = Keyword.get(opts, :output_schema)
       backend_opts = Keyword.get(opts, :backend_opts, [])
+      client_module = client_module(config)
+      collector_module = collector_module(config)
 
-      collector = BamlElixir.Collector.new("puck-#{System.unique_integer([:positive])}")
+      collector = collector_module.new("puck-#{System.unique_integer([:positive])}")
 
       baml_opts = build_baml_opts(config, output_schema, backend_opts)
       baml_opts = Map.update(baml_opts, :collectors, [collector], &[collector | &1])
 
-      case BamlElixir.Client.call(function_name, args, baml_opts) do
+      case client_module.call(function_name, args, baml_opts) do
         {:ok, result} ->
-          usage = extract_collector_usage(collector)
+          usage = extract_collector_usage(collector_module, collector)
           {:ok, build_response(result, config, output_schema, usage)}
 
         {:error, reason} ->
           T.event([:backend, :baml, :error], %{}, %{
             function: function_name,
             reason: reason,
-            raw_llm_response: extract_raw_response(collector)
+            raw_llm_response: extract_raw_response(collector_module, collector)
           })
 
           {:error, reason}
@@ -73,8 +75,10 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       args = build_args(messages, config)
       output_schema = Keyword.get(opts, :output_schema)
       backend_opts = Keyword.get(opts, :backend_opts, [])
+      client_module = client_module(config)
+      collector_module = collector_module(config)
 
-      collector = BamlElixir.Collector.new("puck-stream-#{System.unique_integer([:positive])}")
+      collector = collector_module.new("puck-stream-#{System.unique_integer([:positive])}")
 
       baml_opts = build_baml_opts(config, output_schema, backend_opts)
       baml_opts = Map.update(baml_opts, :collectors, [collector], &[collector | &1])
@@ -84,8 +88,17 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
       stream =
         Stream.resource(
-          fn -> start_stream(caller, ref, function_name, args, baml_opts) end,
-          fn state -> receive_chunks(state, ref, output_schema, collector, function_name) end,
+          fn -> start_stream(caller, ref, function_name, args, baml_opts, client_module) end,
+          fn state ->
+            receive_chunks(
+              state,
+              ref,
+              output_schema,
+              collector,
+              collector_module,
+              function_name
+            )
+          end,
           fn _state -> :ok end
         )
 
@@ -159,7 +172,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end)
     end
 
-    @internal_keys [:function, :args_format, :args]
+    @internal_keys [:function, :args_format, :args, :client_module, :collector_module]
 
     defp build_baml_opts(config, output_schema, backend_opts) do
       opts =
@@ -220,21 +233,25 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     @doc false
     def extract_raw_response(nil), do: nil
 
-    def extract_raw_response(collector) do
-      case BamlElixir.Collector.last_function_log(collector) do
+    def extract_raw_response(collector), do: extract_raw_response(BamlElixir.Collector, collector)
+
+    defp extract_raw_response(_collector_module, nil), do: nil
+
+    defp extract_raw_response(collector_module, collector) do
+      case collector_module.last_function_log(collector) do
         %{"raw_llm_response" => raw} -> raw
         _ -> nil
       end
     end
 
-    defp extract_collector_usage(collector) do
+    defp extract_collector_usage(collector_module, collector) do
       collector_usage =
-        case BamlElixir.Collector.usage(collector) do
+        case collector_module.usage(collector) do
           %{} = usage -> usage
           _ -> %{}
         end
 
-      log_usage = extract_function_log_usage(collector)
+      log_usage = extract_function_log_usage(collector_module, collector)
 
       collector_usage
       |> merge_usage(log_usage)
@@ -257,9 +274,9 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       |> Map.put(:output_tokens, output_tokens)
     end
 
-    defp extract_function_log_usage(collector) do
+    defp extract_function_log_usage(collector_module, collector) do
       collector
-      |> BamlElixir.Collector.last_function_log()
+      |> collector_module.last_function_log()
       |> extract_last_call_usage()
     end
 
@@ -458,9 +475,9 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     def normalize_nif_result(other), do: other
 
-    defp start_stream(caller, ref, function_name, args, opts) do
+    defp start_stream(caller, ref, function_name, args, opts, client_module) do
       spawn_link(fn ->
-        BamlElixir.Client.stream(
+        client_module.stream(
           function_name,
           args,
           fn
@@ -480,11 +497,25 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       :streaming
     end
 
-    defp receive_chunks(:done, _ref, _output_schema, _collector, _function_name) do
+    defp receive_chunks(
+           :done,
+           _ref,
+           _output_schema,
+           _collector,
+           _collector_module,
+           _function_name
+         ) do
       {:halt, :done}
     end
 
-    defp receive_chunks(:streaming, ref, output_schema, collector, function_name) do
+    defp receive_chunks(
+           :streaming,
+           ref,
+           output_schema,
+           collector,
+           collector_module,
+           function_name
+         ) do
       receive do
         {^ref, {:chunk, result}} ->
           parsed = maybe_parse_schema(output_schema, result)
@@ -500,7 +531,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           T.event([:backend, :baml, :error], %{}, %{
             function: function_name,
             reason: reason,
-            raw_llm_response: extract_raw_response(collector)
+            raw_llm_response: extract_raw_response(collector_module, collector)
           })
 
           raise "BAML stream error: #{inspect(reason)}"
@@ -509,5 +540,8 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           raise "BAML stream timeout"
       end
     end
+
+    defp client_module(config), do: Map.get(config, :client_module, BamlElixir.Client)
+    defp collector_module(config), do: Map.get(config, :collector_module, BamlElixir.Collector)
   end
 end

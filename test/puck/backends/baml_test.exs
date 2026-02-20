@@ -5,11 +5,22 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     alias Puck.Backends.Baml
     alias Puck.Message
+    alias Puck.TestSupport.BamlClientMock
+    alias Puck.TestSupport.BamlCollectorMock
 
     setup_all do
-      Mimic.copy(BamlElixir.Client)
-      Mimic.copy(BamlElixir.Collector)
+      Mimic.copy(BamlClientMock)
+      Mimic.copy(BamlCollectorMock)
       :ok
+    end
+
+    defp test_config(overrides \\ %{}) do
+      %{
+        function: "DreambeamChat",
+        client_module: BamlClientMock,
+        collector_module: BamlCollectorMock
+      }
+      |> Map.merge(overrides)
     end
 
     describe "Puck.Backends.Baml" do
@@ -66,18 +77,18 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       test "enriches usage with provider cache fields from response body usage" do
         collector = :collector_ref
 
-        expect(BamlElixir.Collector, :new, fn _name -> collector end)
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
 
-        expect(BamlElixir.Client, :call, fn "DreambeamChat", %{text: "hello"}, opts ->
+        expect(BamlClientMock, :call, fn "DreambeamChat", %{text: "hello"}, opts ->
           assert opts.collectors == [collector]
           {:ok, "ok"}
         end)
 
-        expect(BamlElixir.Collector, :usage, fn ^collector ->
+        expect(BamlCollectorMock, :usage, fn ^collector ->
           %{"input_tokens" => 100, "output_tokens" => 20}
         end)
 
-        expect(BamlElixir.Collector, :last_function_log, fn ^collector ->
+        expect(BamlCollectorMock, :last_function_log, fn ^collector ->
           %{
             "calls" => [
               %{
@@ -92,7 +103,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         end)
 
         {:ok, response} =
-          Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
+          Baml.call(test_config(), [Message.new(:user, "hello")], [])
 
         assert response.usage[:input_tokens] == 100
         assert response.usage[:output_tokens] == 20
@@ -104,17 +115,17 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       test "infers canonical cache fields from generic usage aliases" do
         collector = :collector_ref
 
-        expect(BamlElixir.Collector, :new, fn _name -> collector end)
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
 
-        expect(BamlElixir.Client, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
+        expect(BamlClientMock, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
           {:ok, "ok"}
         end)
 
-        expect(BamlElixir.Collector, :usage, fn ^collector ->
+        expect(BamlCollectorMock, :usage, fn ^collector ->
           %{"input_tokens" => 100, "output_tokens" => 20}
         end)
 
-        expect(BamlElixir.Collector, :last_function_log, fn ^collector ->
+        expect(BamlCollectorMock, :last_function_log, fn ^collector ->
           %{
             "calls" => [
               %{
@@ -128,7 +139,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         end)
 
         {:ok, response} =
-          Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
+          Baml.call(test_config(), [Message.new(:user, "hello")], [])
 
         assert response.usage["cache_read_input_tokens"] == 256
         assert response.usage["cache_creation_input_tokens"] == 7
@@ -138,17 +149,17 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       test "does not override collector cache usage with inferred alias values" do
         collector = :collector_ref
 
-        expect(BamlElixir.Collector, :new, fn _name -> collector end)
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
 
-        expect(BamlElixir.Client, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
+        expect(BamlClientMock, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
           {:ok, "ok"}
         end)
 
-        expect(BamlElixir.Collector, :usage, fn ^collector ->
+        expect(BamlCollectorMock, :usage, fn ^collector ->
           %{"input_tokens" => 100, "output_tokens" => 20, "cache_read_input_tokens" => 9}
         end)
 
-        expect(BamlElixir.Collector, :last_function_log, fn ^collector ->
+        expect(BamlCollectorMock, :last_function_log, fn ^collector ->
           %{
             "calls" => [
               %{
@@ -162,7 +173,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         end)
 
         {:ok, response} =
-          Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
+          Baml.call(test_config(), [Message.new(:user, "hello")], [])
 
         assert response.usage["cache_read_input_tokens"] == 9
       end
@@ -170,13 +181,13 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       test "deep merges nested usage maps to preserve unknown provider fields" do
         collector = :collector_ref
 
-        expect(BamlElixir.Collector, :new, fn _name -> collector end)
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
 
-        expect(BamlElixir.Client, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
+        expect(BamlClientMock, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
           {:ok, "ok"}
         end)
 
-        expect(BamlElixir.Collector, :usage, fn ^collector ->
+        expect(BamlCollectorMock, :usage, fn ^collector ->
           %{
             "input_tokens" => 100,
             "output_tokens" => 20,
@@ -185,7 +196,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           }
         end)
 
-        expect(BamlElixir.Collector, :last_function_log, fn ^collector ->
+        expect(BamlCollectorMock, :last_function_log, fn ^collector ->
           %{
             "calls" => [
               %{
@@ -199,7 +210,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         end)
 
         {:ok, response} =
-          Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
+          Baml.call(test_config(), [Message.new(:user, "hello")], [])
 
         assert get_in(response.usage, ["provider_meta", "tier"]) == "priority"
         assert get_in(response.usage, ["provider_meta", "region"]) == "us-east"
