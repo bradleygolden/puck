@@ -1,8 +1,10 @@
 if Code.ensure_loaded?(BamlElixir.Client) do
   defmodule Puck.Backends.BamlTest do
     use ExUnit.Case, async: true
+    use Mimic
 
     alias Puck.Backends.Baml
+    alias Puck.Message
 
     describe "Puck.Backends.Baml" do
       test "implements Puck.Backend behaviour" do
@@ -51,6 +53,110 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
       test "returns nil for nil collector" do
         assert is_nil(Baml.extract_raw_response(nil))
+      end
+    end
+
+    describe "usage extraction" do
+      test "enriches usage with provider cache fields from response body usage" do
+        collector = :collector_ref
+
+        expect(BamlElixir.Collector, :new, fn _name -> collector end)
+
+        expect(BamlElixir.Client, :call, fn "DreambeamChat", %{text: "hello"}, opts ->
+          assert opts.collectors == [collector]
+          {:ok, "ok"}
+        end)
+
+        expect(BamlElixir.Collector, :usage, fn ^collector ->
+          %{"input_tokens" => 100, "output_tokens" => 20}
+        end)
+
+        expect(BamlElixir.Collector, :last_function_log, fn ^collector ->
+          %{
+            "calls" => [
+              %{
+                "usage" => %{"input_tokens" => 100, "output_tokens" => 20},
+                "response" => %{
+                  "body" =>
+                    ~s({"usage":{"cache_creation_input_tokens":12,"prompt_tokens_details":{"cached_tokens":64}}})
+                }
+              }
+            ]
+          }
+        end)
+
+        {:ok, response} =
+          Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
+
+        assert response.usage[:input_tokens] == 100
+        assert response.usage[:output_tokens] == 20
+        assert response.usage["cache_creation_input_tokens"] == 12
+        assert get_in(response.usage, ["prompt_tokens_details", "cached_tokens"]) == 64
+        assert response.usage["cache_read_input_tokens"] == 64
+      end
+
+      test "falls back to Fireworks cache headers when cache fields are missing in usage body" do
+        collector = :collector_ref
+
+        expect(BamlElixir.Collector, :new, fn _name -> collector end)
+
+        expect(BamlElixir.Client, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
+          {:ok, "ok"}
+        end)
+
+        expect(BamlElixir.Collector, :usage, fn ^collector ->
+          %{"input_tokens" => 100, "output_tokens" => 20}
+        end)
+
+        expect(BamlElixir.Collector, :last_function_log, fn ^collector ->
+          %{
+            "calls" => [
+              %{
+                "response" => %{
+                  "body" => ~s({"usage":{"prompt_tokens":100}}),
+                  "headers" => %{"fireworks-cached-prompt-tokens" => "256"}
+                }
+              }
+            ]
+          }
+        end)
+
+        {:ok, response} =
+          Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
+
+        assert response.usage["cache_read_input_tokens"] == 256
+      end
+
+      test "does not override collector cache usage with inferred fallback values" do
+        collector = :collector_ref
+
+        expect(BamlElixir.Collector, :new, fn _name -> collector end)
+
+        expect(BamlElixir.Client, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
+          {:ok, "ok"}
+        end)
+
+        expect(BamlElixir.Collector, :usage, fn ^collector ->
+          %{"input_tokens" => 100, "output_tokens" => 20, "cache_read_input_tokens" => 9}
+        end)
+
+        expect(BamlElixir.Collector, :last_function_log, fn ^collector ->
+          %{
+            "calls" => [
+              %{
+                "response" => %{
+                  "body" => ~s({"usage":{"prompt_tokens":100}}),
+                  "headers" => %{"fireworks-cached-prompt-tokens" => "256"}
+                }
+              }
+            ]
+          }
+        end)
+
+        {:ok, response} =
+          Baml.call(%{function: "DreambeamChat"}, [Message.new(:user, "hello")], [])
+
+        assert response.usage["cache_read_input_tokens"] == 9
       end
     end
 

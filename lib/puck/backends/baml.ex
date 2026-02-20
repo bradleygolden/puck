@@ -228,13 +228,17 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     end
 
     defp extract_collector_usage(collector) do
-      case BamlElixir.Collector.usage(collector) do
-        %{} = usage ->
-          normalize_collector_usage(usage)
+      collector_usage =
+        case BamlElixir.Collector.usage(collector) do
+          %{} = usage -> usage
+          _ -> %{}
+        end
 
-        _ ->
-          %{}
-      end
+      log_usage = extract_function_log_usage(collector)
+
+      collector_usage
+      |> merge_usage(log_usage)
+      |> normalize_collector_usage()
     end
 
     defp normalize_collector_usage(usage) when is_map(usage) do
@@ -252,6 +256,114 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       |> Map.put(:input_tokens, input_tokens)
       |> Map.put(:output_tokens, output_tokens)
     end
+
+    defp extract_function_log_usage(collector) do
+      collector
+      |> BamlElixir.Collector.last_function_log()
+      |> extract_last_call_usage()
+    end
+
+    defp extract_last_call_usage(log) when is_map(log) do
+      case map_get(log, "calls") do
+        calls when is_list(calls) ->
+          calls
+          |> List.last()
+          |> extract_call_usage()
+
+        _ ->
+          %{}
+      end
+    end
+
+    defp extract_last_call_usage(_), do: %{}
+
+    defp extract_call_usage(call) when is_map(call) do
+      call_usage =
+        case map_get(call, "usage") do
+          %{} = usage -> usage
+          _ -> %{}
+        end
+
+      response_usage = extract_response_body_usage(call)
+      usage = merge_usage(call_usage, response_usage)
+      maybe_add_cache_read_tokens(usage, call)
+    end
+
+    defp extract_call_usage(_), do: %{}
+
+    defp extract_response_body_usage(call) do
+      with %{} = response <- map_get(call, "response"),
+           body when is_binary(body) <- map_get(response, "body"),
+           {:ok, decoded_body} <- Jason.decode(body),
+           %{} = usage <- map_get(decoded_body, "usage") do
+        usage
+      else
+        _ -> %{}
+      end
+    end
+
+    defp maybe_add_cache_read_tokens(usage, call) when is_map(usage) do
+      case infer_cache_read_tokens(usage, call) do
+        nil ->
+          usage
+
+        cache_read ->
+          if is_nil(map_get(usage, "cache_read_input_tokens")) do
+            Map.put(usage, "cache_read_input_tokens", cache_read)
+          else
+            usage
+          end
+      end
+    end
+
+    defp infer_cache_read_tokens(usage, call) do
+      parse_integer(map_get(usage, "cache_read_input_tokens")) ||
+        parse_integer(map_get(usage, "cached_tokens")) ||
+        parse_integer(usage |> map_get("prompt_tokens_details") |> map_get("cached_tokens")) ||
+        parse_integer(
+          call
+          |> map_get("response")
+          |> map_get("headers")
+          |> map_get("fireworks-cached-prompt-tokens")
+        )
+    end
+
+    defp merge_usage(primary, secondary) when is_map(primary) and is_map(secondary) do
+      Map.merge(primary, secondary, fn _key, left, right ->
+        if is_nil(left), do: right, else: left
+      end)
+    end
+
+    defp map_get(nil, _key), do: nil
+
+    defp map_get(map, key) when is_map(map) and is_atom(key) do
+      Map.get(map, key) || Map.get(map, to_string(key))
+    end
+
+    defp map_get(map, key) when is_map(map) and is_binary(key) do
+      Map.get(map, key) ||
+        Enum.find_value(map, fn
+          {map_key, value} when is_atom(map_key) ->
+            if Atom.to_string(map_key) == key, do: value, else: nil
+
+          _ ->
+            nil
+        end)
+    end
+
+    defp map_get(_map, _key), do: nil
+
+    defp parse_integer(value) when is_integer(value), do: value
+    defp parse_integer(value) when is_float(value), do: trunc(value)
+
+    defp parse_integer(value) when is_binary(value) do
+      case Integer.parse(String.trim(value)) do
+        {parsed, ""} -> parsed
+        _ -> nil
+      end
+    end
+
+    defp parse_integer(_), do: nil
 
     defp maybe_parse_schema(schema, result) when is_map(result) and not is_nil(schema) do
       normalized = normalize_nif_result(result)
