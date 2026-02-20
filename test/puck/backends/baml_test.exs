@@ -1,8 +1,27 @@
 if Code.ensure_loaded?(BamlElixir.Client) do
   defmodule Puck.Backends.BamlTest do
     use ExUnit.Case, async: true
+    use Mimic
 
     alias Puck.Backends.Baml
+    alias Puck.Message
+    alias Puck.TestSupport.BamlClientMock
+    alias Puck.TestSupport.BamlCollectorMock
+
+    setup_all do
+      Mimic.copy(BamlClientMock)
+      Mimic.copy(BamlCollectorMock)
+      :ok
+    end
+
+    defp test_config(overrides \\ %{}) do
+      %{
+        function: "DreambeamChat",
+        client_module: BamlClientMock,
+        collector_module: BamlCollectorMock
+      }
+      |> Map.merge(overrides)
+    end
 
     describe "Puck.Backends.Baml" do
       test "implements Puck.Backend behaviour" do
@@ -51,6 +70,152 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
       test "returns nil for nil collector" do
         assert is_nil(Baml.extract_raw_response(nil))
+      end
+    end
+
+    describe "usage extraction" do
+      test "enriches usage with provider cache fields from response body usage" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+
+        expect(BamlClientMock, :call, fn "DreambeamChat", %{text: "hello"}, opts ->
+          assert opts.collectors == [collector]
+          {:ok, "ok"}
+        end)
+
+        expect(BamlCollectorMock, :usage, fn ^collector ->
+          %{"input_tokens" => 100, "output_tokens" => 20}
+        end)
+
+        expect(BamlCollectorMock, :last_function_log, fn ^collector ->
+          %{
+            "calls" => [
+              %{
+                "usage" => %{"input_tokens" => 100, "output_tokens" => 20},
+                "response" => %{
+                  "body" =>
+                    ~s({"usage":{"cache_creation_input_tokens":12,"prompt_tokens_details":{"cached_tokens":64}}})
+                }
+              }
+            ]
+          }
+        end)
+
+        {:ok, response} =
+          Baml.call(test_config(), [Message.new(:user, "hello")], [])
+
+        assert response.usage[:input_tokens] == 100
+        assert response.usage[:output_tokens] == 20
+        assert response.usage["cache_creation_input_tokens"] == 12
+        assert get_in(response.usage, ["prompt_tokens_details", "cached_tokens"]) == 64
+        assert response.usage["cache_read_input_tokens"] == 64
+      end
+
+      test "infers canonical cache fields from generic usage aliases" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+
+        expect(BamlClientMock, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
+          {:ok, "ok"}
+        end)
+
+        expect(BamlCollectorMock, :usage, fn ^collector ->
+          %{"input_tokens" => 100, "output_tokens" => 20}
+        end)
+
+        expect(BamlCollectorMock, :last_function_log, fn ^collector ->
+          %{
+            "calls" => [
+              %{
+                "response" => %{
+                  "body" =>
+                    ~s({"usage":{"prompt_tokens":100,"input_token_details":{"cached_tokens":"256"},"cache":{"creation_input_tokens":7}}})
+                }
+              }
+            ]
+          }
+        end)
+
+        {:ok, response} =
+          Baml.call(test_config(), [Message.new(:user, "hello")], [])
+
+        assert response.usage["cache_read_input_tokens"] == 256
+        assert response.usage["cache_creation_input_tokens"] == 7
+        assert get_in(response.usage, ["input_token_details", "cached_tokens"]) == "256"
+      end
+
+      test "does not override collector cache usage with inferred alias values" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+
+        expect(BamlClientMock, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
+          {:ok, "ok"}
+        end)
+
+        expect(BamlCollectorMock, :usage, fn ^collector ->
+          %{"input_tokens" => 100, "output_tokens" => 20, "cache_read_input_tokens" => 9}
+        end)
+
+        expect(BamlCollectorMock, :last_function_log, fn ^collector ->
+          %{
+            "calls" => [
+              %{
+                "response" => %{
+                  "body" =>
+                    ~s({"usage":{"prompt_tokens":100,"prompt_tokens_details":{"cached_tokens":256}}})
+                }
+              }
+            ]
+          }
+        end)
+
+        {:ok, response} =
+          Baml.call(test_config(), [Message.new(:user, "hello")], [])
+
+        assert response.usage["cache_read_input_tokens"] == 9
+      end
+
+      test "deep merges nested usage maps to preserve unknown provider fields" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+
+        expect(BamlClientMock, :call, fn "DreambeamChat", %{text: "hello"}, _opts ->
+          {:ok, "ok"}
+        end)
+
+        expect(BamlCollectorMock, :usage, fn ^collector ->
+          %{
+            "input_tokens" => 100,
+            "output_tokens" => 20,
+            "provider_meta" => %{"tier" => "priority"},
+            "prompt_tokens_details" => %{"custom_flag" => 1}
+          }
+        end)
+
+        expect(BamlCollectorMock, :last_function_log, fn ^collector ->
+          %{
+            "calls" => [
+              %{
+                "response" => %{
+                  "body" =>
+                    ~s({"usage":{"prompt_tokens_details":{"cached_tokens":32},"provider_meta":{"region":"us-east"}}})
+                }
+              }
+            ]
+          }
+        end)
+
+        {:ok, response} =
+          Baml.call(test_config(), [Message.new(:user, "hello")], [])
+
+        assert get_in(response.usage, ["provider_meta", "tier"]) == "priority"
+        assert get_in(response.usage, ["provider_meta", "region"]) == "us-east"
+        assert get_in(response.usage, ["prompt_tokens_details", "custom_flag"]) == 1
+        assert get_in(response.usage, ["prompt_tokens_details", "cached_tokens"]) == 32
       end
     end
 

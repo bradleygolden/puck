@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- BAML backend now enriches collector usage with provider response usage/body/header fields, including cache metrics such as `cache_read_input_tokens` when available.
+
 ## [0.2.19] - 2026-02-20
 
 ### Fixed

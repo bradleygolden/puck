@@ -45,22 +45,24 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       args = build_args(messages, config)
       output_schema = Keyword.get(opts, :output_schema)
       backend_opts = Keyword.get(opts, :backend_opts, [])
+      client_module = client_module(config)
+      collector_module = collector_module(config)
 
-      collector = BamlElixir.Collector.new("puck-#{System.unique_integer([:positive])}")
+      collector = collector_module.new("puck-#{System.unique_integer([:positive])}")
 
       baml_opts = build_baml_opts(config, output_schema, backend_opts)
       baml_opts = Map.update(baml_opts, :collectors, [collector], &[collector | &1])
 
-      case BamlElixir.Client.call(function_name, args, baml_opts) do
+      case client_module.call(function_name, args, baml_opts) do
         {:ok, result} ->
-          usage = extract_collector_usage(collector)
+          usage = extract_collector_usage(collector_module, collector)
           {:ok, build_response(result, config, output_schema, usage)}
 
         {:error, reason} ->
           T.event([:backend, :baml, :error], %{}, %{
             function: function_name,
             reason: reason,
-            raw_llm_response: extract_raw_response(collector)
+            raw_llm_response: extract_raw_response(collector_module, collector)
           })
 
           {:error, reason}
@@ -73,8 +75,10 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       args = build_args(messages, config)
       output_schema = Keyword.get(opts, :output_schema)
       backend_opts = Keyword.get(opts, :backend_opts, [])
+      client_module = client_module(config)
+      collector_module = collector_module(config)
 
-      collector = BamlElixir.Collector.new("puck-stream-#{System.unique_integer([:positive])}")
+      collector = collector_module.new("puck-stream-#{System.unique_integer([:positive])}")
 
       baml_opts = build_baml_opts(config, output_schema, backend_opts)
       baml_opts = Map.update(baml_opts, :collectors, [collector], &[collector | &1])
@@ -84,8 +88,17 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
       stream =
         Stream.resource(
-          fn -> start_stream(caller, ref, function_name, args, baml_opts) end,
-          fn state -> receive_chunks(state, ref, output_schema, collector, function_name) end,
+          fn -> start_stream(caller, ref, function_name, args, baml_opts, client_module) end,
+          fn state ->
+            receive_chunks(
+              state,
+              ref,
+              output_schema,
+              collector,
+              collector_module,
+              function_name
+            )
+          end,
           fn _state -> :ok end
         )
 
@@ -159,7 +172,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end)
     end
 
-    @internal_keys [:function, :args_format, :args]
+    @internal_keys [:function, :args_format, :args, :client_module, :collector_module]
 
     defp build_baml_opts(config, output_schema, backend_opts) do
       opts =
@@ -220,21 +233,29 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     @doc false
     def extract_raw_response(nil), do: nil
 
-    def extract_raw_response(collector) do
-      case BamlElixir.Collector.last_function_log(collector) do
+    def extract_raw_response(collector), do: extract_raw_response(BamlElixir.Collector, collector)
+
+    defp extract_raw_response(_collector_module, nil), do: nil
+
+    defp extract_raw_response(collector_module, collector) do
+      case collector_module.last_function_log(collector) do
         %{"raw_llm_response" => raw} -> raw
         _ -> nil
       end
     end
 
-    defp extract_collector_usage(collector) do
-      case BamlElixir.Collector.usage(collector) do
-        %{} = usage ->
-          normalize_collector_usage(usage)
+    defp extract_collector_usage(collector_module, collector) do
+      collector_usage =
+        case collector_module.usage(collector) do
+          %{} = usage -> usage
+          _ -> %{}
+        end
 
-        _ ->
-          %{}
-      end
+      log_usage = extract_function_log_usage(collector_module, collector)
+
+      collector_usage
+      |> merge_usage(log_usage)
+      |> normalize_collector_usage()
     end
 
     defp normalize_collector_usage(usage) when is_map(usage) do
@@ -252,6 +273,175 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       |> Map.put(:input_tokens, input_tokens)
       |> Map.put(:output_tokens, output_tokens)
     end
+
+    defp extract_function_log_usage(collector_module, collector) do
+      collector
+      |> collector_module.last_function_log()
+      |> extract_last_call_usage()
+    end
+
+    defp extract_last_call_usage(log) when is_map(log) do
+      case map_get(log, "calls") do
+        calls when is_list(calls) ->
+          calls
+          |> List.last()
+          |> extract_call_usage()
+
+        _ ->
+          %{}
+      end
+    end
+
+    defp extract_last_call_usage(_), do: %{}
+
+    @cache_read_usage_paths [
+      ["cache_read_input_tokens"],
+      ["cache_read_tokens"],
+      ["cached_tokens"],
+      ["prompt_tokens_details", "cached_tokens"],
+      ["input_token_details", "cached_tokens"],
+      ["cache", "read_input_tokens"],
+      ["cache", "read_tokens"]
+    ]
+
+    @cache_creation_usage_paths [
+      ["cache_creation_input_tokens"],
+      ["cache_write_input_tokens"],
+      ["cache_creation_tokens"],
+      ["prompt_tokens_details", "cache_creation_tokens"],
+      ["input_token_details", "cache_creation_tokens"],
+      ["cache", "creation_input_tokens"],
+      ["cache", "write_input_tokens"]
+    ]
+
+    defp extract_call_usage(call) when is_map(call) do
+      call_usage =
+        case map_get(call, "usage") do
+          %{} = usage -> usage
+          _ -> %{}
+        end
+
+      response_usage = extract_response_body_usage(call)
+      usage = merge_usage(call_usage, response_usage)
+      add_canonical_usage_fields(usage)
+    end
+
+    defp extract_call_usage(_), do: %{}
+
+    defp extract_response_body_usage(call) do
+      case map_get(call, "response") do
+        %{} = response ->
+          merge_usage(
+            extract_usage_from_map(response),
+            response |> map_get("body") |> extract_usage_from_body()
+          )
+
+        _ ->
+          %{}
+      end
+    end
+
+    defp extract_usage_from_map(map) when is_map(map) do
+      case map_get(map, "usage") do
+        %{} = usage -> usage
+        _ -> %{}
+      end
+    end
+
+    defp extract_usage_from_body(body) when is_binary(body) do
+      case Jason.decode(body) do
+        {:ok, decoded_body} -> extract_usage_from_map(decoded_body)
+        _ -> %{}
+      end
+    end
+
+    defp extract_usage_from_body(%{} = decoded_body), do: extract_usage_from_map(decoded_body)
+    defp extract_usage_from_body(_), do: %{}
+
+    defp add_canonical_usage_fields(usage) when is_map(usage) do
+      usage
+      |> put_usage_if_missing(
+        "cache_read_input_tokens",
+        infer_usage_value(usage, @cache_read_usage_paths)
+      )
+      |> put_usage_if_missing(
+        "cache_creation_input_tokens",
+        infer_usage_value(usage, @cache_creation_usage_paths)
+      )
+    end
+
+    defp merge_usage(primary, secondary) when is_map(primary) and is_map(secondary) do
+      Map.merge(secondary, primary, fn _key, secondary_value, primary_value ->
+        cond do
+          is_map(primary_value) and is_map(secondary_value) ->
+            merge_usage(primary_value, secondary_value)
+
+          is_nil(primary_value) ->
+            secondary_value
+
+          true ->
+            primary_value
+        end
+      end)
+    end
+
+    defp put_usage_if_missing(usage, _key, nil), do: usage
+
+    defp put_usage_if_missing(usage, key, value) do
+      if is_nil(map_get(usage, key)) do
+        Map.put(usage, key, value)
+      else
+        usage
+      end
+    end
+
+    defp infer_usage_value(usage, candidate_paths) do
+      Enum.find_value(candidate_paths, fn path ->
+        path
+        |> map_get_path(usage)
+        |> parse_integer()
+      end)
+    end
+
+    defp map_get_path(path, usage) when is_list(path) do
+      Enum.reduce_while(path, usage, fn key, acc ->
+        case map_get(acc, key) do
+          nil -> {:halt, nil}
+          value -> {:cont, value}
+        end
+      end)
+    end
+
+    defp map_get(nil, _key), do: nil
+
+    defp map_get(map, key) when is_map(map) and is_atom(key) do
+      Map.get(map, key) || Map.get(map, to_string(key))
+    end
+
+    defp map_get(map, key) when is_map(map) and is_binary(key) do
+      Map.get(map, key) ||
+        Enum.find_value(map, fn
+          {map_key, value} when is_atom(map_key) ->
+            if Atom.to_string(map_key) == key, do: value, else: nil
+
+          _ ->
+            nil
+        end)
+    end
+
+    defp map_get(_map, _key), do: nil
+
+    defp parse_integer(value) when is_integer(value), do: value
+    defp parse_integer(value) when is_float(value), do: trunc(value)
+
+    defp parse_integer(value) when is_binary(value) do
+      case Integer.parse(String.trim(value)) do
+        {parsed, ""} -> parsed
+        _ -> nil
+      end
+    end
+
+    defp parse_integer(_), do: nil
 
     defp maybe_parse_schema(schema, result) when is_map(result) and not is_nil(schema) do
       normalized = normalize_nif_result(result)
@@ -285,9 +475,9 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     def normalize_nif_result(other), do: other
 
-    defp start_stream(caller, ref, function_name, args, opts) do
+    defp start_stream(caller, ref, function_name, args, opts, client_module) do
       spawn_link(fn ->
-        BamlElixir.Client.stream(
+        client_module.stream(
           function_name,
           args,
           fn
@@ -307,11 +497,25 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       :streaming
     end
 
-    defp receive_chunks(:done, _ref, _output_schema, _collector, _function_name) do
+    defp receive_chunks(
+           :done,
+           _ref,
+           _output_schema,
+           _collector,
+           _collector_module,
+           _function_name
+         ) do
       {:halt, :done}
     end
 
-    defp receive_chunks(:streaming, ref, output_schema, collector, function_name) do
+    defp receive_chunks(
+           :streaming,
+           ref,
+           output_schema,
+           collector,
+           collector_module,
+           function_name
+         ) do
       receive do
         {^ref, {:chunk, result}} ->
           parsed = maybe_parse_schema(output_schema, result)
@@ -327,7 +531,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           T.event([:backend, :baml, :error], %{}, %{
             function: function_name,
             reason: reason,
-            raw_llm_response: extract_raw_response(collector)
+            raw_llm_response: extract_raw_response(collector_module, collector)
           })
 
           raise "BAML stream error: #{inspect(reason)}"
@@ -336,5 +540,8 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           raise "BAML stream timeout"
       end
     end
+
+    defp client_module(config), do: Map.get(config, :client_module, BamlElixir.Client)
+    defp collector_module(config), do: Map.get(config, :collector_module, BamlElixir.Collector)
   end
 end
