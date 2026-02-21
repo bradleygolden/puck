@@ -571,6 +571,8 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       strip_trailing_incomplete_escape(value)
     end
 
+    defp sanitize_partial_strings(%_{} = struct), do: struct
+
     defp sanitize_partial_strings(value) when is_map(value) do
       Map.new(value, fn {k, v} -> {k, sanitize_partial_strings(v)} end)
     end

@@ -1,7 +1,7 @@
 defmodule Puck.MixProject do
   use Mix.Project
 
-  @version "0.2.22"
+  @version "0.2.23"
   @source_url "https://github.com/bradleygolden/puck"
 
   def project do

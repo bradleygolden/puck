@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.23] - 2026-02-21
+
+### Fixed
+
+- BAML streaming `sanitize_partial_strings/1` no longer crashes with `Protocol.UndefinedError` when the output schema parses into a struct (e.g., `PuckCoder.Actions.Shell`). Structs match the `is_map` guard but don't implement `Enumerable`, so `Map.new/2` would raise. Added a struct-specific clause that passes through unchanged.
+
 ## [0.2.22] - 2026-02-21
 
 ### Added
@@ -248,7 +254,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.22...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.23...HEAD
+[0.2.23]: https://github.com/bradleygolden/puck/compare/v0.2.22...v0.2.23
 [0.2.22]: https://github.com/bradleygolden/puck/compare/v0.2.21...v0.2.22
 [0.2.21]: https://github.com/bradleygolden/puck/compare/v0.2.20...v0.2.21
 [0.2.20]: https://github.com/bradleygolden/puck/compare/v0.2.19...v0.2.20
