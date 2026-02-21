@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `on_stream_done/3` hook callback, invoked once after stream completion with the assembled `Puck.Response` and final assistant-appended context
+
 ## [0.2.21] - 2026-02-21
 
 ### Fixed

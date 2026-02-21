@@ -40,6 +40,11 @@ defmodule Puck.HooksTest do
     end
 
     @impl true
+    def on_stream_done(client, response, context) do
+      send(self(), {:hook, :on_stream_done, client, response, context})
+    end
+
+    @impl true
     def on_backend_request(config, messages) do
       send(self(), {:hook, :on_backend_request, config, messages})
       {:cont, messages}
@@ -365,6 +370,17 @@ defmodule Puck.HooksTest do
       assert_received {:hook, :on_stream_chunk, ^client, _, _}
 
       assert_received {:hook, :on_stream_end, ^client, ^context}
+
+      assert_received {:hook, :on_stream_done, ^client, response, final_context}
+      assert response.content == "Hello world"
+
+      messages = Context.messages(final_context)
+      assert length(messages) == 2
+      assert Enum.at(messages, 0).role == :user
+      assert Enum.at(messages, 1).role == :assistant
+      assert Enum.at(messages, 1).content == [Puck.Content.text("Hello world")]
+
+      refute_received {:hook, :on_stream_done, ^client, _, _}
     end
   end
 

@@ -159,7 +159,7 @@ defmodule Puck.Runtime do
     with {:cont, transformed_messages} <-
            Hooks.invoke(hooks, :on_backend_request, [config, messages], messages),
          {:ok, stream} <- backend_module.stream(config, transformed_messages, opts) do
-      instrumented_stream = instrument_stream(stream, client, context, hooks, start_time)
+      instrumented_stream = instrument_stream(stream, client, content, context, hooks, start_time)
       updated_context = Context.add_message(context, :user, content)
       {:ok, instrumented_stream, updated_context}
     else
@@ -171,20 +171,73 @@ defmodule Puck.Runtime do
     end
   end
 
-  defp instrument_stream(stream, client, context, hooks, start_time) do
+  defp instrument_stream(stream, client, content, context, hooks, start_time) do
     stream
-    |> Stream.each(fn chunk ->
-      T.event([:stream, :chunk], %{}, %{client: client, chunk: chunk, context: context})
-      Hooks.invoke(hooks, :on_stream_chunk, [client, chunk, context])
-    end)
     |> Stream.transform(
-      fn -> :ok end,
-      fn chunk, acc -> {[chunk], acc} end,
-      fn _acc ->
+      fn -> %{content: "", thinking: nil, last_chunk: nil} end,
+      fn chunk, acc ->
+        T.event([:stream, :chunk], %{}, %{client: client, chunk: chunk, context: context})
+        Hooks.invoke(hooks, :on_stream_chunk, [client, chunk, context])
+        {[chunk], accumulate_stream_result(acc, chunk)}
+      end,
+      fn acc ->
         T.stop([:stream], start_time, %{client: client, context: context})
         Hooks.invoke(hooks, :on_stream_end, [client, context])
+
+        response = build_stream_response(acc)
+        final_context = add_exchange_to_context(context, content, response)
+        Hooks.invoke(hooks, :on_stream_done, [client, response, final_context])
       end
     )
+  end
+
+  defp accumulate_stream_result(acc, chunk) do
+    acc
+    |> Map.put(:last_chunk, chunk)
+    |> accumulate_stream_content(chunk)
+    |> accumulate_stream_thinking(chunk)
+  end
+
+  defp accumulate_stream_content(acc, %{type: :content, content: content})
+       when is_binary(content) do
+    current = if is_binary(acc.content), do: acc.content, else: ""
+    %{acc | content: current <> content}
+  end
+
+  defp accumulate_stream_content(acc, %{type: :content, content: content}) do
+    %{acc | content: content}
+  end
+
+  defp accumulate_stream_content(acc, _chunk), do: acc
+
+  defp accumulate_stream_thinking(acc, %{type: :thinking, content: content})
+       when is_binary(content) do
+    thinking = if is_binary(acc.thinking), do: acc.thinking <> content, else: content
+    %{acc | thinking: thinking}
+  end
+
+  defp accumulate_stream_thinking(acc, _chunk), do: acc
+
+  defp build_stream_response(%{content: content, thinking: thinking, last_chunk: last_chunk}) do
+    Response.new(
+      content: content,
+      thinking: thinking,
+      finish_reason: chunk_field(last_chunk, :finish_reason, :stop),
+      usage: map_field(last_chunk, :usage),
+      metadata: map_field(last_chunk, :metadata)
+    )
+  end
+
+  defp chunk_field(nil, _field, default), do: default
+  defp chunk_field(chunk, field, default), do: Map.get(chunk, field, default)
+
+  defp map_field(nil, _field), do: %{}
+
+  defp map_field(map, field) do
+    case Map.get(map, field) do
+      value when is_map(value) -> value
+      _ -> %{}
+    end
   end
 
   defp add_exchange_to_context(context, user_content, %Response{} = response) do

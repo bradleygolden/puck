@@ -46,6 +46,12 @@ defmodule Puck.Integration.HooksTest do
     end
 
     @impl true
+    def on_stream_done(_client, response, context) do
+      send(self(), {:hook, :stream_done, response, context})
+      :cont
+    end
+
+    @impl true
     def on_backend_request(_config, messages) do
       send(self(), {:hook, :backend_request, messages})
       {:cont, messages}
@@ -122,6 +128,7 @@ defmodule Puck.Integration.HooksTest do
       assert_received {:hook, :stream_start, _content}
       assert_received {:hook, :stream_chunk, _chunk}
       assert_received {:hook, :stream_end}
+      assert_received {:hook, :stream_done, _response, _context}
     end
   end
 
@@ -179,6 +186,7 @@ defmodule Puck.Integration.HooksTest do
       assert_received {:hook, :stream_start, _content}
       assert_received {:hook, :stream_chunk, _chunk}
       assert_received {:hook, :stream_end}
+      assert_received {:hook, :stream_done, _response, _context}
     end
   end
 

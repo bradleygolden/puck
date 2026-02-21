@@ -318,7 +318,7 @@ Available hooks:
 - `on_call_start/3` — Before LLM call (can transform content or halt)
 - `on_call_end/3` — After successful call (can transform response)
 - `on_call_error/3` — On call failure
-- `on_stream_start/3`, `on_stream_chunk/3`, `on_stream_end/2` — Stream lifecycle
+- `on_stream_start/3`, `on_stream_chunk/3`, `on_stream_end/2`, `on_stream_done/3` — Stream lifecycle
 - `on_backend_request/2`, `on_backend_response/2` — Backend request/response
 - `on_compaction_start/3`, `on_compaction_end/2` — Compaction lifecycle
 

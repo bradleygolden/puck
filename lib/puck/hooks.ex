@@ -16,7 +16,7 @@ defmodule Puck.Hooks do
   - `on_call_start/3` - Before LLM call
   - `on_call_end/3` - After successful call
   - `on_call_error/3` - On call failure
-  - `on_stream_start/3`, `on_stream_chunk/3`, `on_stream_end/2` - Stream lifecycle
+  - `on_stream_start/3`, `on_stream_chunk/3`, `on_stream_end/2`, `on_stream_done/3` - Stream lifecycle
   - `on_backend_request/2`, `on_backend_response/2` - Backend lifecycle
   - `on_compaction_start/3`, `on_compaction_end/2` - Compaction lifecycle
 
@@ -71,6 +71,7 @@ defmodule Puck.Hooks do
               {:cont, term()} | {:error, term()}
   @callback on_stream_chunk(client, chunk, context) :: term()
   @callback on_stream_end(client, context) :: term()
+  @callback on_stream_done(client, response, context) :: term()
 
   @callback on_backend_request(config, messages) ::
               {:cont, messages} | {:halt, response} | {:error, term()}
@@ -88,6 +89,7 @@ defmodule Puck.Hooks do
                       on_stream_start: 3,
                       on_stream_chunk: 3,
                       on_stream_end: 2,
+                      on_stream_done: 3,
                       on_backend_request: 2,
                       on_backend_response: 2,
                       on_compaction_start: 3,
@@ -138,7 +140,8 @@ defmodule Puck.Hooks do
   @doc """
   Invokes an observational hook callback (return value is ignored).
 
-  Used for callbacks like `on_call_error`, `on_stream_chunk`, `on_stream_end`
+  Used for callbacks like `on_call_error`, `on_stream_chunk`, `on_stream_end`,
+  and `on_stream_done`
   where the return value doesn't affect the pipeline.
   """
   def invoke(hooks, callback, args)
