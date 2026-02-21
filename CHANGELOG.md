@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.21] - 2026-02-21
+
+### Fixed
+
+- BAML backend streaming no longer aborts immediately when stream callbacks are delivered asynchronously from the BAML client
+
 ## [0.2.20] - 2026-02-20
 
 ### Fixed
@@ -231,7 +237,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.20...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.21...HEAD
+[0.2.21]: https://github.com/bradleygolden/puck/compare/v0.2.20...v0.2.21
 [0.2.20]: https://github.com/bradleygolden/puck/compare/v0.2.19...v0.2.20
 [0.2.19]: https://github.com/bradleygolden/puck/compare/v0.2.18...v0.2.19
 [0.2.18]: https://github.com/bradleygolden/puck/compare/v0.2.17...v0.2.18
