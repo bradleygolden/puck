@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.22] - 2026-02-21
+
 ### Added
 
 - Added `on_stream_done/3` hook callback, invoked once after stream completion with the assembled `Puck.Response` and final assistant-appended context
@@ -246,7 +248,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.21...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.22...HEAD
+[0.2.22]: https://github.com/bradleygolden/puck/compare/v0.2.21...v0.2.22
 [0.2.21]: https://github.com/bradleygolden/puck/compare/v0.2.20...v0.2.21
 [0.2.20]: https://github.com/bradleygolden/puck/compare/v0.2.19...v0.2.20
 [0.2.19]: https://github.com/bradleygolden/puck/compare/v0.2.18...v0.2.19
