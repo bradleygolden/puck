@@ -219,6 +219,44 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
     end
 
+    describe "stream lifecycle" do
+      test "stream does not abort when client stream callback is async" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlCollectorMock, :last_function_log, fn _collector -> %{} end)
+
+        expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hello"}, callback, opts ->
+          assert opts.collectors == [collector]
+
+          stream_caller = self()
+          stream_ref = Process.monitor(stream_caller)
+
+          spawn(fn ->
+            receive do
+              {:DOWN, ^stream_ref, :process, ^stream_caller, _} ->
+                callback.({:error, "AbortError"})
+            after
+              10 ->
+                callback.({:done, %{type: "done", message: "ok"}})
+            end
+          end)
+
+          :ok
+        end)
+
+        {:ok, stream} = Baml.stream(test_config(), [Message.new(:user, "hello")], [])
+
+        assert [
+                 %{
+                   type: :content,
+                   content: %{type: "done", message: "ok"},
+                   metadata: %{partial: false, backend: :baml}
+                 }
+               ] = Enum.to_list(stream)
+      end
+    end
+
     describe "NIF result normalization (issue #22)" do
       defmodule ActionA do
         @moduledoc false

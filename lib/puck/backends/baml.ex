@@ -485,23 +485,21 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     def normalize_nif_result(other), do: other
 
     defp start_stream(caller, ref, function_name, args, opts, client_module) do
-      spawn_link(fn ->
-        client_module.stream(
-          function_name,
-          args,
-          fn
-            {:partial, result} ->
-              send(caller, {ref, {:chunk, result}})
+      client_module.stream(
+        function_name,
+        args,
+        fn
+          {:partial, result} ->
+            send(caller, {ref, {:chunk, result}})
 
-            {:done, result} ->
-              send(caller, {ref, {:done, result}})
+          {:done, result} ->
+            send(caller, {ref, {:done, result}})
 
-            {:error, reason} ->
-              send(caller, {ref, {:error, reason}})
-          end,
-          opts
-        )
-      end)
+          {:error, reason} ->
+            send(caller, {ref, {:error, reason}})
+        end,
+        opts
+      )
 
       :streaming
     end
