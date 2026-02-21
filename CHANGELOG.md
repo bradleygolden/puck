@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added `on_stream_done/3` hook callback, invoked once after stream completion with the assembled `Puck.Response` and final assistant-appended context
 
+### Fixed
+
+- BAML streaming now populates usage (token counts) in the final chunk, making `on_stream_done` and `Puck.Response` usage symmetric with non-streaming calls
+
 ## [0.2.21] - 2026-02-21
 
 ### Fixed

@@ -8,7 +8,7 @@ defmodule Puck.Integration.FewShotTest do
   describe "BAML few-shot prompting" do
     @describetag :baml
 
-    setup :check_ollama_available!
+    setup :check_fireworks_available!
 
     setup do
       client =

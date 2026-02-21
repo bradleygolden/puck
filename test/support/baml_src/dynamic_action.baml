@@ -3,7 +3,7 @@ class PluginAction {
 }
 
 function ChoosePluginAction(text: string) -> PluginAction {
-  client Ollama
+  client Fireworks
   prompt #"
     Given the user query, choose the appropriate action.
     {{ ctx.output_format }}

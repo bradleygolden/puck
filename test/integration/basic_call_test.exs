@@ -8,7 +8,7 @@ defmodule Puck.Integration.BasicCallTest do
   describe "BAML basic call" do
     @describetag :baml
 
-    setup :check_ollama_available!
+    setup :check_fireworks_available!
 
     setup do
       client =

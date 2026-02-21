@@ -5,7 +5,7 @@ class Person {
 }
 
 function ExtractPerson(text: string) -> Person {
-  client Ollama
+  client Fireworks
   prompt #"
     Extract the person's name, age, and occupation from this text.
     {{ ctx.output_format }}
@@ -16,7 +16,7 @@ function ExtractPerson(text: string) -> Person {
 }
 
 function Summarize(text: string) -> string {
-  client Ollama
+  client Fireworks
   prompt #"
     Summarize the following text in one sentence.
     {{ ctx.output_format }}
@@ -27,7 +27,7 @@ function Summarize(text: string) -> string {
 }
 
 function Classify(text: string) -> string {
-  client Ollama
+  client Fireworks
   prompt #"
     Classify the sentiment of this text as one of: positive, negative, or neutral.
     {{ ctx.output_format }}
@@ -36,3 +36,13 @@ function Classify(text: string) -> string {
     Text: {{ text }}
   "#
 }
+
+function Chat(text: string) -> string {
+  client Fireworks
+  prompt #"
+    {{ ctx.output_format }}
+
+    {{ text }}
+  "#
+}
+

@@ -92,7 +92,7 @@ defmodule Puck.Integration.StreamingSchemaTest do
   describe "BAML streaming with schema" do
     @describetag :baml
 
-    setup :check_ollama_available!
+    setup :check_fireworks_available!
 
     setup do
       client =

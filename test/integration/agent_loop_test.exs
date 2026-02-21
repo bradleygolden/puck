@@ -39,7 +39,7 @@ defmodule Puck.AgentLoopTest do
   describe "BAML agent loop" do
     @describetag :baml
 
-    setup :check_ollama_available!
+    setup :check_fireworks_available!
 
     setup do
       client =

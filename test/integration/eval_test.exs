@@ -179,26 +179,15 @@ defmodule Puck.Integration.EvalTest do
   describe "BAML eval" do
     @describetag :baml
 
-    setup do
-      client_registry = %{
-        "clients" => [
-          %{
-            "name" => "AnthropicHaiku",
-            "provider" => "anthropic",
-            "options" => %{"model" => "claude-haiku-4-5-20251001"}
-          }
-        ],
-        "primary" => "AnthropicHaiku",
-        "Ollama" => "AnthropicHaiku"
-      }
+    setup :check_fireworks_available!
 
+    setup do
       client =
         Puck.Client.new(
-          {Puck.Backends.Baml,
-           function: "ChooseTool", path: "test/support/baml_src", client_registry: client_registry}
+          {Puck.Backends.Baml, function: "ChooseTool", path: "test/support/baml_src"}
         )
 
-      [client: client, client_registry: client_registry]
+      [client: client]
     end
 
     @tag timeout: 120_000
@@ -225,11 +214,10 @@ defmodule Puck.Integration.EvalTest do
     end
 
     @tag timeout: 120_000
-    test "captures trajectory from streaming response", %{client_registry: client_registry} do
+    test "captures trajectory from streaming response" do
       client =
         Puck.Client.new(
-          {Puck.Backends.Baml,
-           function: "Summarize", path: "test/support/baml_src", client_registry: client_registry}
+          {Puck.Backends.Baml, function: "Summarize", path: "test/support/baml_src"}
         )
 
       {output, trajectory} =
@@ -253,24 +241,15 @@ defmodule Puck.Integration.EvalTest do
   describe "BAML eval + compaction (dogfood)" do
     @describetag :baml
 
-    setup do
-      client_registry = %{
-        "clients" => [
-          %{
-            "name" => "AnthropicHaiku",
-            "provider" => "anthropic",
-            "options" => %{"model" => "claude-haiku-4-5-20251001"}
-          }
-        ],
-        "primary" => "AnthropicHaiku",
-        "Ollama" => "AnthropicHaiku",
-        "PuckClient" => "AnthropicHaiku"
-      }
+    setup :check_fireworks_available!
 
+    setup do
       client =
         Puck.Client.new(
           {Puck.Backends.Baml,
-           function: "Classify", path: "test/support/baml_src", client_registry: client_registry},
+           function: "Classify",
+           path: "test/support/baml_src",
+           client_registry: %{"PuckClient" => "Fireworks"}},
           auto_compaction: {:summarize, max_tokens: 100, keep_last: 2}
         )
 

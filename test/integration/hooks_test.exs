@@ -99,7 +99,7 @@ defmodule Puck.Integration.HooksTest do
   describe "BAML hooks" do
     @describetag :baml
 
-    setup :check_ollama_available!
+    setup :check_fireworks_available!
 
     setup do
       client =
@@ -130,12 +130,23 @@ defmodule Puck.Integration.HooksTest do
       assert_received {:hook, :stream_end}
       assert_received {:hook, :stream_done, _response, _context}
     end
+
+    @tag timeout: 60_000
+    test "on_stream_done receives response with populated usage", %{client: client} do
+      {:ok, stream, _ctx} = Puck.stream(client, "This is great!", Puck.Context.new())
+
+      _chunks = Enum.to_list(stream)
+
+      assert_received {:hook, :stream_done, response, _context}
+      assert response.usage[:input_tokens] > 0
+      assert response.usage[:output_tokens] > 0
+    end
   end
 
   describe "BAML hook transformation" do
     @describetag :baml
 
-    setup :check_ollama_available!
+    setup :check_fireworks_available!
 
     setup do
       client =

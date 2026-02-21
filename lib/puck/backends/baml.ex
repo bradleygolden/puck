@@ -531,7 +531,15 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
         {^ref, {:done, result}} ->
           parsed = maybe_parse_schema(output_schema, result)
-          chunk = %{type: :content, content: parsed, metadata: %{partial: false, backend: :baml}}
+          usage = extract_collector_usage(collector_module, collector)
+
+          chunk = %{
+            type: :content,
+            content: parsed,
+            metadata: %{partial: false, backend: :baml},
+            usage: usage
+          }
+
           {[chunk], :done}
 
         {^ref, {:error, reason}} ->

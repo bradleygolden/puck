@@ -15,26 +15,24 @@ defmodule Puck.IntegrationCase do
   end
 
   @doc """
-  Setup callback that checks if Ollama is available.
+  Setup callback that checks if the FIREWORKS_API_KEY environment variable is set.
 
   Use in your test module:
 
-      setup :check_ollama_available
+      setup :check_fireworks_available!
   """
-  def check_ollama_available!(_context \\ %{}) do
-    url = "http://localhost:11434/api/tags"
+  def check_fireworks_available!(_context \\ %{}) do
+    case System.get_env("FIREWORKS_API_KEY") do
+      nil ->
+        raise ExUnit.AssertionError,
+          message: "FIREWORKS_API_KEY is not set. Export it to run BAML integration tests."
 
-    case :httpc.request(:get, {~c"#{url}", []}, [timeout: 5000], []) do
-      {:ok, {{_, 200, _}, _, _}} ->
+      "" ->
+        raise ExUnit.AssertionError,
+          message: "FIREWORKS_API_KEY is empty. Export a valid key to run BAML integration tests."
+
+      _key ->
         :ok
-
-      {:ok, {{_, status, _}, _, _}} ->
-        raise ExUnit.AssertionError,
-          message: "Ollama returned status #{status}. Start Ollama with: ollama serve"
-
-      {:error, reason} ->
-        raise ExUnit.AssertionError,
-          message: "Ollama is not available: #{inspect(reason)}. Start Ollama with: ollama serve"
     end
   end
 end

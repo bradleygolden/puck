@@ -9,7 +9,7 @@ class Done {
 }
 
 function ChooseTool(text: string) -> LookupContact | Done {
-  client Ollama
+  client Fireworks
   prompt #"
     Given the user query, determine the primary intent and select the appropriate tool to call.
     {{ ctx.output_format }}

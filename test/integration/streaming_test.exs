@@ -8,7 +8,7 @@ defmodule Puck.Integration.StreamingTest do
   describe "BAML streaming" do
     @describetag :baml
 
-    setup :check_ollama_available!
+    setup :check_fireworks_available!
 
     setup do
       client =
@@ -34,6 +34,18 @@ defmodule Puck.Integration.StreamingTest do
 
       last_chunk = List.last(chunks)
       assert last_chunk.metadata.partial == false
+    end
+
+    @tag timeout: 60_000
+    test "final chunk includes populated usage from collector", %{client: client} do
+      {:ok, stream, _ctx} =
+        Puck.stream(client, "Elixir is a dynamic, functional language.", Puck.Context.new())
+
+      chunks = Enum.to_list(stream)
+      last_chunk = List.last(chunks)
+
+      assert last_chunk.usage[:input_tokens] > 0
+      assert last_chunk.usage[:output_tokens] > 0
     end
 
     @tag timeout: 60_000

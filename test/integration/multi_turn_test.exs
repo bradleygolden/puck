@@ -8,7 +8,7 @@ defmodule Puck.Integration.MultiTurnTest do
   describe "BAML multi-turn" do
     @describetag :baml
 
-    setup :check_ollama_available!
+    setup :check_fireworks_available!
 
     setup do
       client =

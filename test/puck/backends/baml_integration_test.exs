@@ -12,12 +12,12 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     end
 
     setup do
-      case check_ollama_available() do
+      case check_fireworks_available() do
         :ok ->
           :ok
 
         {:error, reason} ->
-          flunk("Ollama is not available: #{reason}. Start Ollama with: ollama serve")
+          flunk("FIREWORKS_API_KEY not set: #{reason}")
       end
     end
 
@@ -192,18 +192,10 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
     end
 
-    defp check_ollama_available do
-      url = "http://localhost:11434/api/tags"
-
-      case :httpc.request(:get, {~c"#{url}", []}, [timeout: 5000], []) do
-        {:ok, {{_, 200, _}, _, _}} ->
-          :ok
-
-        {:ok, {{_, status, _}, _, _}} ->
-          {:error, "Ollama returned status #{status}"}
-
-        {:error, reason} ->
-          {:error, inspect(reason)}
+    defp check_fireworks_available do
+      case System.get_env("FIREWORKS_API_KEY") do
+        key when is_binary(key) and key != "" -> :ok
+        _ -> {:error, "FIREWORKS_API_KEY is not set"}
       end
     end
   end

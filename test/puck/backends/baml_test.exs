@@ -224,6 +224,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         collector = :collector_ref
 
         expect(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlCollectorMock, :usage, fn _collector -> %{} end)
         stub(BamlCollectorMock, :last_function_log, fn _collector -> %{} end)
 
         expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hello"}, callback, opts ->
@@ -254,6 +255,44 @@ if Code.ensure_loaded?(BamlElixir.Client) do
                    metadata: %{partial: false, backend: :baml}
                  }
                ] = Enum.to_list(stream)
+      end
+
+      test "final chunk includes usage data from collector" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+
+        expect(BamlCollectorMock, :usage, fn ^collector ->
+          %{"input_tokens" => 50, "output_tokens" => 10}
+        end)
+
+        expect(BamlCollectorMock, :last_function_log, fn ^collector ->
+          %{
+            "calls" => [
+              %{
+                "usage" => %{"input_tokens" => 50, "output_tokens" => 10}
+              }
+            ]
+          }
+        end)
+
+        expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hello"}, callback, _opts ->
+          spawn(fn ->
+            callback.({:done, "final result"})
+          end)
+
+          :ok
+        end)
+
+        {:ok, stream} = Baml.stream(test_config(), [Message.new(:user, "hello")], [])
+
+        chunks = Enum.to_list(stream)
+        assert [final_chunk] = chunks
+        assert final_chunk.type == :content
+        assert final_chunk.content == "final result"
+        assert final_chunk.metadata.partial == false
+        assert final_chunk.usage[:input_tokens] == 50
+        assert final_chunk.usage[:output_tokens] == 10
       end
     end
 

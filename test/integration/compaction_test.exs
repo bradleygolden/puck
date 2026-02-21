@@ -9,18 +9,6 @@ defmodule Puck.Integration.CompactionTest do
     defstruct [:passed, :reason]
   end
 
-  @judge_schema Zoi.struct(
-                  JudgeResult,
-                  %{
-                    passed:
-                      Zoi.boolean(
-                        description: "Whether the compaction preserved context correctly"
-                      ),
-                    reason: Zoi.string(description: "Brief explanation of the verdict")
-                  },
-                  coerce: true
-                )
-
   describe "ReqLLM sliding_window auto-compaction" do
     @describetag :req_llm
 
@@ -113,22 +101,12 @@ defmodule Puck.Integration.CompactionTest do
   describe "BAML sliding_window auto-compaction" do
     @describetag :baml
 
-    setup do
-      client_registry = %{
-        "clients" => [
-          %{
-            "name" => "AnthropicHaiku",
-            "provider" => "anthropic",
-            "options" => %{"model" => "claude-haiku-4-5-20251001"}
-          }
-        ],
-        "primary" => "AnthropicHaiku"
-      }
+    setup :check_fireworks_available!
 
+    setup do
       client =
         Puck.Client.new(
-          {Puck.Backends.Baml,
-           function: "Classify", path: "test/support/baml_src", client_registry: client_registry},
+          {Puck.Backends.Baml, function: "Classify", path: "test/support/baml_src"},
           auto_compaction: {:sliding_window, window_size: 4}
         )
 
@@ -169,23 +147,15 @@ defmodule Puck.Integration.CompactionTest do
   describe "BAML auto-compaction with built-in Summarize" do
     @describetag :baml
 
-    setup do
-      client_registry = %{
-        "clients" => [
-          %{
-            "name" => "AnthropicHaiku",
-            "provider" => "anthropic",
-            "options" => %{"model" => "claude-haiku-4-5-20251001"}
-          }
-        ],
-        "primary" => "AnthropicHaiku",
-        "PuckClient" => "AnthropicHaiku"
-      }
+    setup :check_fireworks_available!
 
+    setup do
       client =
         Puck.Client.new(
           {Puck.Backends.Baml,
-           function: "Classify", path: "test/support/baml_src", client_registry: client_registry},
+           function: "Classify",
+           path: "test/support/baml_src",
+           client_registry: %{"PuckClient" => "Fireworks"}},
           auto_compaction: {:summarize, max_tokens: 100, keep_last: 2}
         )
 
@@ -220,29 +190,16 @@ defmodule Puck.Integration.CompactionTest do
   describe "BAML manual summarize compaction" do
     @describetag :baml
 
-    setup do
-      client_registry = %{
-        "clients" => [
-          %{
-            "name" => "AnthropicHaiku",
-            "provider" => "anthropic",
-            "options" => %{"model" => "claude-haiku-4-5-20251001"}
-          }
-        ],
-        "primary" => "AnthropicHaiku"
-      }
+    setup :check_fireworks_available!
 
+    setup do
       summarize_client =
         Puck.Client.new(
-          {Puck.Backends.Baml,
-           function: "Summarize", path: "test/support/baml_src", client_registry: client_registry}
+          {Puck.Backends.Baml, function: "Summarize", path: "test/support/baml_src"}
         )
 
       client =
-        Puck.Client.new(
-          {Puck.Backends.Baml,
-           function: "Classify", path: "test/support/baml_src", client_registry: client_registry}
-        )
+        Puck.Client.new({Puck.Backends.Baml, function: "Classify", path: "test/support/baml_src"})
 
       [client: client, summarize_client: summarize_client]
     end
@@ -294,11 +251,7 @@ defmodule Puck.Integration.CompactionTest do
 
   defp judge_compaction(original_messages, compacted_context, criteria) do
     judge_client =
-      Puck.Client.new(
-        {Puck.Backends.ReqLLM, "anthropic:claude-haiku-4-5-20251001"},
-        system_prompt:
-          "You are a judge evaluating conversation compaction quality. Be strict but fair."
-      )
+      Puck.Client.new({Puck.Backends.Baml, function: "Chat", path: "test/support/baml_src"})
 
     original_text = format_messages(original_messages)
     compacted_text = format_context(compacted_context)
@@ -314,13 +267,20 @@ defmodule Puck.Integration.CompactionTest do
     #{criteria}
 
     Judge whether the compaction preserved the essential context.
-    Return passed: true if the criteria are met, false otherwise.
+    Respond with ONLY one of these two formats (no other text):
+    PASS: <brief reason>
+    FAIL: <brief reason>
     """
 
-    {:ok, %{content: result}, _} =
-      Puck.call(judge_client, prompt, Puck.Context.new(), output_schema: @judge_schema)
+    {:ok, response, _} = Puck.call(judge_client, prompt, Puck.Context.new())
 
-    result
+    content = String.trim(response.content)
+
+    if String.starts_with?(content, "PASS") do
+      %JudgeResult{passed: true, reason: content}
+    else
+      %JudgeResult{passed: false, reason: content}
+    end
   end
 
   defp format_messages(messages) do
