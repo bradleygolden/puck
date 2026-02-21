@@ -501,7 +501,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         opts
       )
 
-      :streaming
+      {:streaming, nil}
     end
 
     defp receive_chunks(
@@ -516,7 +516,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     end
 
     defp receive_chunks(
-           :streaming,
+           {:streaming, prev_content},
            ref,
            output_schema,
            collector,
@@ -526,8 +526,19 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       receive do
         {^ref, {:chunk, result}} ->
           parsed = maybe_parse_schema(output_schema, result)
-          chunk = %{type: :content, content: parsed, metadata: %{partial: true, backend: :baml}}
-          {[chunk], :streaming}
+          sanitized = sanitize_partial_strings(parsed)
+
+          if sanitized == prev_content do
+            {[], {:streaming, prev_content}}
+          else
+            chunk = %{
+              type: :content,
+              content: sanitized,
+              metadata: %{partial: true, backend: :baml}
+            }
+
+            {[chunk], {:streaming, sanitized}}
+          end
 
         {^ref, {:done, result}} ->
           parsed = maybe_parse_schema(output_schema, result)
@@ -553,6 +564,28 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       after
         30_000 ->
           raise "BAML stream timeout"
+      end
+    end
+
+    defp sanitize_partial_strings(value) when is_binary(value) do
+      strip_trailing_incomplete_escape(value)
+    end
+
+    defp sanitize_partial_strings(value) when is_map(value) do
+      Map.new(value, fn {k, v} -> {k, sanitize_partial_strings(v)} end)
+    end
+
+    defp sanitize_partial_strings(value) when is_list(value) do
+      Enum.map(value, &sanitize_partial_strings/1)
+    end
+
+    defp sanitize_partial_strings(value), do: value
+
+    defp strip_trailing_incomplete_escape(str) when is_binary(str) do
+      if String.ends_with?(str, "\\") do
+        String.slice(str, 0..-2//1)
+      else
+        str
       end
     end
 

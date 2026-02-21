@@ -296,6 +296,179 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
     end
 
+    describe "partial escape sanitization (issue #33)" do
+      test "strips trailing backslash from plain string partial" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlCollectorMock, :usage, fn _collector -> %{} end)
+        stub(BamlCollectorMock, :last_function_log, fn _collector -> %{} end)
+
+        expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hi"}, callback, _opts ->
+          spawn(fn ->
+            callback.({:partial, "hello world\\"})
+            callback.({:done, "hello world\n"})
+          end)
+
+          :ok
+        end)
+
+        {:ok, stream} = Baml.stream(test_config(), [Message.new(:user, "hi")], [])
+        chunks = Enum.to_list(stream)
+
+        partial = Enum.find(chunks, &(&1.metadata.partial == true))
+        assert partial.content == "hello world"
+
+        done = Enum.find(chunks, &(&1.metadata.partial == false))
+        assert done.content == "hello world\n"
+      end
+
+      test "strips trailing backslash from structured output string fields" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlCollectorMock, :usage, fn _collector -> %{} end)
+        stub(BamlCollectorMock, :last_function_log, fn _collector -> %{} end)
+
+        expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hi"}, callback, _opts ->
+          spawn(fn ->
+            callback.({:partial, %{"summary" => "line one\\", "title" => "ok\\"}})
+            callback.({:done, %{"summary" => "line one\ntwo", "title" => "ok\n"}})
+          end)
+
+          :ok
+        end)
+
+        {:ok, stream} = Baml.stream(test_config(), [Message.new(:user, "hi")], [])
+        chunks = Enum.to_list(stream)
+
+        partial = Enum.find(chunks, &(&1.metadata.partial == true))
+        assert partial.content == %{"summary" => "line one", "title" => "ok"}
+
+        done = Enum.find(chunks, &(&1.metadata.partial == false))
+        assert done.content == %{"summary" => "line one\ntwo", "title" => "ok\n"}
+      end
+
+      test "suppresses duplicate chunks after sanitization" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlCollectorMock, :usage, fn _collector -> %{} end)
+        stub(BamlCollectorMock, :last_function_log, fn _collector -> %{} end)
+
+        expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hi"}, callback, _opts ->
+          spawn(fn ->
+            callback.({:partial, "hello\\"})
+            callback.({:partial, "hello"})
+            callback.({:done, "hello\nworld"})
+          end)
+
+          :ok
+        end)
+
+        {:ok, stream} = Baml.stream(test_config(), [Message.new(:user, "hi")], [])
+        chunks = Enum.to_list(stream)
+
+        partials = Enum.filter(chunks, &(&1.metadata.partial == true))
+        assert length(partials) == 1
+        assert hd(partials).content == "hello"
+      end
+
+      test "preserves non-trailing backslashes" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlCollectorMock, :usage, fn _collector -> %{} end)
+        stub(BamlCollectorMock, :last_function_log, fn _collector -> %{} end)
+
+        expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hi"}, callback, _opts ->
+          spawn(fn ->
+            callback.({:partial, "path\\to\\file"})
+            callback.({:done, "path\\to\\file"})
+          end)
+
+          :ok
+        end)
+
+        {:ok, stream} = Baml.stream(test_config(), [Message.new(:user, "hi")], [])
+        chunks = Enum.to_list(stream)
+
+        partial = Enum.find(chunks, &(&1.metadata.partial == true))
+        assert partial.content == "path\\to\\file"
+      end
+
+      test "strips trailing backslash from list elements in partial" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlCollectorMock, :usage, fn _collector -> %{} end)
+        stub(BamlCollectorMock, :last_function_log, fn _collector -> %{} end)
+
+        expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hi"}, callback, _opts ->
+          spawn(fn ->
+            callback.({:partial, %{"items" => ["first\\", "second\\"]}})
+            callback.({:done, %{"items" => ["first\n", "second\n"]}})
+          end)
+
+          :ok
+        end)
+
+        {:ok, stream} = Baml.stream(test_config(), [Message.new(:user, "hi")], [])
+        chunks = Enum.to_list(stream)
+
+        partial = Enum.find(chunks, &(&1.metadata.partial == true))
+        assert partial.content == %{"items" => ["first", "second"]}
+
+        done = Enum.find(chunks, &(&1.metadata.partial == false))
+        assert done.content == %{"items" => ["first\n", "second\n"]}
+      end
+
+      test "non-string values in structured partials pass through unchanged" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlCollectorMock, :usage, fn _collector -> %{} end)
+        stub(BamlCollectorMock, :last_function_log, fn _collector -> %{} end)
+
+        expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hi"}, callback, _opts ->
+          spawn(fn ->
+            callback.({:partial, %{"count" => 42, "active" => true, "name" => "test\\"}})
+            callback.({:done, %{"count" => 42, "active" => true, "name" => "test"}})
+          end)
+
+          :ok
+        end)
+
+        {:ok, stream} = Baml.stream(test_config(), [Message.new(:user, "hi")], [])
+        chunks = Enum.to_list(stream)
+
+        partial = Enum.find(chunks, &(&1.metadata.partial == true))
+        assert partial.content == %{"count" => 42, "active" => true, "name" => "test"}
+      end
+
+      test "done chunk is never sanitized" do
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlCollectorMock, :usage, fn _collector -> %{} end)
+        stub(BamlCollectorMock, :last_function_log, fn _collector -> %{} end)
+
+        expect(BamlClientMock, :stream, fn "DreambeamChat", %{text: "hi"}, callback, _opts ->
+          spawn(fn ->
+            callback.({:done, "trailing backslash\\"})
+          end)
+
+          :ok
+        end)
+
+        {:ok, stream} = Baml.stream(test_config(), [Message.new(:user, "hi")], [])
+        chunks = Enum.to_list(stream)
+
+        done = Enum.find(chunks, &(&1.metadata.partial == false))
+        assert done.content == "trailing backslash\\"
+      end
+    end
+
     describe "NIF result normalization (issue #22)" do
       defmodule ActionA do
         @moduledoc false

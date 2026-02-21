@@ -59,6 +59,27 @@ defmodule Puck.Integration.StreamingTest do
       assert is_binary(final_chunk.content)
       assert final_chunk.content != ""
     end
+
+    @tag timeout: 60_000
+    test "stream chunks are monotonically increasing", %{client: client} do
+      {:ok, stream, _ctx} =
+        Puck.stream(client, "Elixir is a dynamic, functional language.", Puck.Context.new())
+
+      chunks = Enum.to_list(stream)
+      assert length(chunks) > 1
+
+      text_chunks =
+        chunks
+        |> Enum.filter(&is_binary(&1.content))
+        |> Enum.map(& &1.content)
+
+      text_chunks
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.each(fn [prev, next] ->
+        assert String.starts_with?(next, prev),
+               "chunk not monotonic: #{inspect(prev)} -> #{inspect(next)}"
+      end)
+    end
   end
 
   describe "ReqLLM streaming" do

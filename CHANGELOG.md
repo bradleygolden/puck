@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - BAML streaming now populates usage (token counts) in the final chunk, making `on_stream_done` and `Puck.Response` usage symmetric with non-streaming calls
+- BAML streaming no longer emits partial chunks containing broken escape sequences or duplicate content
 
 ## [0.2.21] - 2026-02-21
 
