@@ -194,25 +194,21 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         class_names = Enum.filter(types, &match?(%TB.Class{}, &1)) |> Enum.map(& &1.name)
         assert "DynamicOutputA" in class_names
         assert "DynamicOutputB" in class_names
-
-        root_union = Enum.find(types, &match?(%TB.Union{name: "DynamicOutput"}, &1))
-        assert %TB.Union{name: "DynamicOutput", types: types} = root_union
-        assert "DynamicOutputA" in types
-        assert "DynamicOutputB" in types
+        refute Enum.any?(types, &match?(%TB.Union{}, &1))
       end
 
-      test "root union of primitives produces named union" do
+      test "root union of primitives does not emit top-level types" do
         schema = Zoi.union([Zoi.string(), Zoi.integer()])
         types = TypeBuilder.from_schema(schema)
 
-        assert [%TB.Union{name: "DynamicOutput", types: ["string", "int"]}] = types
+        assert [] = types
       end
 
-      test "root union respects custom :name option" do
+      test "root union still respects custom :name for generated variants" do
         schema = Zoi.union([Zoi.string(), Zoi.integer()])
         types = TypeBuilder.from_schema(schema, name: "PluginAction")
 
-        assert [%TB.Union{name: "PluginAction", types: ["string", "int"]}] = types
+        assert [] = types
       end
 
       test "root union of structs uses discriminator for variant names" do
@@ -227,9 +223,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         class_names = Enum.filter(types, &match?(%TB.Class{}, &1)) |> Enum.map(& &1.name)
         assert "PluginActionGetSkill" in class_names
         assert "PluginActionSearch" in class_names
-
-        root_union = Enum.find(types, &match?(%TB.Union{name: "PluginAction"}, &1))
-        assert %TB.Union{name: "PluginAction"} = root_union
+        refute Enum.any?(types, &match?(%TB.Union{}, &1))
       end
 
       test "non-discriminated union falls back to VariantN naming" do
@@ -254,7 +248,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
         types = TypeBuilder.from_schema(schema)
         assert [%TB.Class{name: "DynamicOutput"}] = types
-        refute Enum.any?(types, &match?(%TB.Union{name: _}, &1))
+        refute Enum.any?(types, &match?(%TB.Union{}, &1))
       end
 
       test "root object does not produce extra union" do

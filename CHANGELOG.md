@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.24] - 2026-03-27
+
+### Fixed
+
+- BAML `output_schema` now works with upstream `baml_elixir` `~> 1.0.0-pre.27`, including schemas that use `Zoi.literal/1`
+- BAML backend no longer passes an empty `tb` list when no generated TypeBuilder entries are needed
+
+### Changed
+
+- Replaced the optional `baml_elixir_next` dependency override with upstream `baml_elixir`
+- BAML TypeBuilder no longer emits top-level `TypeBuilder.Union` entries; callers should define root union return types in `.baml` and use `output_schema`/TypeBuilder for the nested shapes, literals, and generated classes
+
 ## [0.2.23] - 2026-02-21
 
 ### Fixed

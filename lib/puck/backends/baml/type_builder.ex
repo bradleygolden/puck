@@ -109,7 +109,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     ## Options
 
-      * `:name` - Root type name (default: `"DynamicOutput"`)
+      * `:name` - Type name prefix for generated classes and enums (default: `"DynamicOutput"`)
 
     """
     def from_schema(zoi_schema, opts \\ []) do
@@ -123,8 +123,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         |> Map.delete(:"$schema")
         |> inject_descriptions(descriptions)
 
-      {ref, state} = convert(json_schema, name, %{types: []})
-      state = maybe_add_root_union(ref, name, state)
+      {_ref, state} = convert(json_schema, name, %{types: []})
       Enum.reverse(state.types)
     end
 
@@ -249,11 +248,6 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     defp make_nullable(ref) when is_binary(ref), do: ref <> "?"
     defp make_nullable(ref), do: %TB.Union{types: [ref, "null"]}
-
-    defp maybe_add_root_union(%TB.Union{} = union, name, state),
-      do: add_type(state, %{union | name: name})
-
-    defp maybe_add_root_union(_ref, _name, state), do: state
 
     defp add_type(state, type), do: %{state | types: [type | state.types]}
 

@@ -187,15 +187,20 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         dynamic_classes = Map.get(opts, :dynamic_classes, %{})
         schema_descriptions = Map.get(opts, :schema_descriptions, %{})
 
+        type_builder = build_type_builder(output_schema, dynamic_classes, schema_descriptions)
+
         opts
         |> Map.delete(:dynamic_classes)
         |> Map.delete(:schema_descriptions)
         |> Map.put(:parse, false)
-        |> Map.put(:tb, build_type_builder(output_schema, dynamic_classes, schema_descriptions))
+        |> maybe_put_type_builder(type_builder)
       else
         opts
       end
     end
+
+    defp maybe_put_type_builder(opts, []), do: opts
+    defp maybe_put_type_builder(opts, type_builder), do: Map.put(opts, :tb, type_builder)
 
     defp build_type_builder(output_schema, dynamic_classes, schema_descriptions)
          when map_size(dynamic_classes) == 0 do
