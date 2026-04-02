@@ -605,5 +605,156 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         assert Baml.normalize_nif_result(%{name: "test"}) == %{name: "test"}
       end
     end
+
+    describe "multimodal message formatting" do
+      alias Puck.Content
+
+      defp call_multimodal(content) do
+        config = test_config(%{args_format: :messages_multimodal})
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+
+        test_pid = self()
+
+        expect(BamlClientMock, :call, fn _function, args, _opts ->
+          send(test_pid, {:captured_args, args})
+          {:ok, "ok"}
+        end)
+
+        expect(BamlCollectorMock, :usage, fn ^collector -> %{} end)
+        expect(BamlCollectorMock, :last_function_log, fn ^collector -> nil end)
+
+        messages = [Message.new(:user, content)]
+        Baml.call(config, messages, [])
+
+        assert_receive {:captured_args, args}
+        args
+      end
+
+      test "text part returns plain string" do
+        args = call_multimodal([Content.text("hello")])
+        assert %{messages: [%{role: "user", content: ["hello"]}]} = args
+      end
+
+      test "image URL without explicit media_type" do
+        args = call_multimodal([Content.image_url("https://example.com/img.png")])
+        assert %{messages: [%{content: [%{url: "https://example.com/img.png"}]}]} = args
+      end
+
+      test "image URL with explicit media_type" do
+        part = %Content.Part{type: :image_url, url: "https://example.com/img.png", media_type: "image/png"}
+        args = call_multimodal([part])
+
+        assert %{messages: [%{content: [%{url: "https://example.com/img.png", media_type: "image/png"}]}]} =
+                 args
+      end
+
+      test "image binary data with media_type" do
+        args = call_multimodal([Content.image("rawbytes", "image/jpeg")])
+
+        assert %{messages: [%{content: [%{base64: encoded, media_type: "image/jpeg"}]}]} = args
+        assert Base.decode64!(encoded) == "rawbytes"
+      end
+
+      test "image binary defaults media_type to image/png" do
+        part = %Content.Part{type: :image, data: "rawbytes", media_type: nil}
+        args = call_multimodal([part])
+
+        assert %{messages: [%{content: [%{base64: _, media_type: "image/png"}]}]} = args
+      end
+
+      test "audio binary data with media_type" do
+        args = call_multimodal([Content.audio("audiobytes", "audio/mp3")])
+
+        assert %{messages: [%{content: [%{base64: encoded, media_type: "audio/mp3"}]}]} = args
+        assert Base.decode64!(encoded) == "audiobytes"
+      end
+
+      test "audio binary defaults media_type to audio/wav" do
+        part = %Content.Part{type: :audio, data: "audiobytes", media_type: nil}
+        args = call_multimodal([part])
+
+        assert %{messages: [%{content: [%{base64: _, media_type: "audio/wav"}]}]} = args
+      end
+
+      test "video binary data with media_type" do
+        args = call_multimodal([Content.video("videobytes", "video/webm")])
+
+        assert %{messages: [%{content: [%{base64: encoded, media_type: "video/webm"}]}]} = args
+        assert Base.decode64!(encoded) == "videobytes"
+      end
+
+      test "video binary defaults media_type to video/mp4" do
+        part = %Content.Part{type: :video, data: "videobytes", media_type: nil}
+        args = call_multimodal([part])
+
+        assert %{messages: [%{content: [%{base64: _, media_type: "video/mp4"}]}]} = args
+      end
+
+      test "file binary data" do
+        args = call_multimodal([Content.file("pdfbytes", "application/pdf")])
+
+        assert %{messages: [%{content: [%{base64: encoded, media_type: "application/pdf"}]}]} = args
+        assert Base.decode64!(encoded) == "pdfbytes"
+      end
+
+      test "mixed content preserves order" do
+        parts = [
+          Content.text("describe this"),
+          Content.image("imgdata", "image/png"),
+          Content.audio("audiodata", "audio/wav")
+        ]
+
+        args = call_multimodal(parts)
+
+        assert %{messages: [%{role: "user", content: [text, image, audio]}]} = args
+        assert text == "describe this"
+        assert %{base64: _, media_type: "image/png"} = image
+        assert %{base64: _, media_type: "audio/wav"} = audio
+      end
+
+      test "multiple messages with different roles" do
+        config = test_config(%{args_format: :messages_multimodal})
+        collector = :collector_ref
+
+        expect(BamlCollectorMock, :new, fn _name -> collector end)
+
+        test_pid = self()
+
+        expect(BamlClientMock, :call, fn _function, args, _opts ->
+          send(test_pid, {:captured_args, args})
+          {:ok, "ok"}
+        end)
+
+        expect(BamlCollectorMock, :usage, fn ^collector -> %{} end)
+        expect(BamlCollectorMock, :last_function_log, fn ^collector -> nil end)
+
+        messages = [
+          Message.new(:system, [Content.text("you are helpful")]),
+          Message.new(:user, [Content.text("hello")])
+        ]
+
+        Baml.call(config, messages, [])
+
+        assert_receive {:captured_args, args}
+        assert %{messages: [%{role: "system"}, %{role: "user"}]} = args
+      end
+
+      test "unsupported part type raises ArgumentError" do
+        config = test_config(%{args_format: :messages_multimodal})
+        collector = :collector_ref
+
+        stub(BamlCollectorMock, :new, fn _name -> collector end)
+        stub(BamlClientMock, :call, fn _function, _args, _opts -> {:ok, "ok"} end)
+
+        custom_part = Content.new(:custom_type, text: "something")
+        messages = [Message.new(:user, [custom_part])]
+
+        assert_raise ArgumentError, ~r/unsupported content part type/, fn ->
+          Baml.call(config, messages, [])
+        end
+      end
+    end
   end
 end

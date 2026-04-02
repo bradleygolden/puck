@@ -11,7 +11,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
 
     - `:function` - (required) The BAML function name to call
     - `:args` - Custom arguments map or function
-    - `:args_format` - How to build args: `:auto`, `:messages`, `:text`, or `:raw`
+    - `:args_format` - How to build args: `:auto`, `:messages`, `:messages_multimodal`, `:text`, or `:raw`
     - `:client_registry` - Runtime client registry for LLM provider configuration
     - `:path` - Path to BAML source files (defaults to `baml_src`)
 
@@ -36,6 +36,7 @@ if Code.ensure_loaded?(BamlElixir.Client) do
     @behaviour Puck.Backend
 
     alias Puck.Backends.Baml.TypeBuilder
+    alias Puck.Content.Part
     alias Puck.{Message, Response}
     alias Puck.Runtime.Telemetry, as: T
 
@@ -124,6 +125,9 @@ if Code.ensure_loaded?(BamlElixir.Client) do
         :messages ->
           %{messages: format_messages(messages)}
 
+        :messages_multimodal ->
+          %{messages: format_messages_multimodal(messages)}
+
         :text ->
           %{text: extract_last_user_text(messages)}
 
@@ -170,6 +174,51 @@ if Code.ensure_loaded?(BamlElixir.Client) do
           content: extract_text_from_content(content)
         }
       end)
+    end
+
+    defp format_messages_multimodal(messages) do
+      Enum.map(messages, fn %Message{role: role, content: content} ->
+        %{
+          role: to_string(role),
+          content: format_content_parts(content)
+        }
+      end)
+    end
+
+    defp format_content_parts(parts) when is_list(parts) do
+      Enum.map(parts, &format_content_part/1)
+    end
+
+    defp format_content_part(%Part{type: :text, text: text}), do: text
+
+    defp format_content_part(%Part{type: :image_url, url: url, media_type: nil}),
+      do: %{url: url}
+
+    defp format_content_part(%Part{type: :image_url, url: url, media_type: media_type}),
+      do: %{url: url, media_type: media_type}
+
+    defp format_content_part(%Part{type: :image, data: data, media_type: media_type})
+         when is_binary(data) do
+      %{base64: Base.encode64(data), media_type: media_type || "image/png"}
+    end
+
+    defp format_content_part(%Part{type: :audio, data: data, media_type: media_type})
+         when is_binary(data) do
+      %{base64: Base.encode64(data), media_type: media_type || "audio/wav"}
+    end
+
+    defp format_content_part(%Part{type: :video, data: data, media_type: media_type})
+         when is_binary(data) do
+      %{base64: Base.encode64(data), media_type: media_type || "video/mp4"}
+    end
+
+    defp format_content_part(%Part{type: :file, data: data, media_type: media_type})
+         when is_binary(data) do
+      %{base64: Base.encode64(data), media_type: media_type || "application/octet-stream"}
+    end
+
+    defp format_content_part(%Part{type: type}) do
+      raise ArgumentError, "unsupported content part type for BAML backend: #{inspect(type)}"
     end
 
     @internal_keys [:function, :args_format, :args, :client_module, :collector_module]

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- BAML backend supports multimodal messages (images, audio, video, and files) via the `:messages_multimodal` args format
+
 ## [0.2.24] - 2026-03-27
 
 ### Fixed
@@ -266,7 +270,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The first release!
 
-[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.23...HEAD
+[Unreleased]: https://github.com/bradleygolden/puck/compare/v0.2.24...HEAD
+[0.2.24]: https://github.com/bradleygolden/puck/compare/v0.2.23...v0.2.24
 [0.2.23]: https://github.com/bradleygolden/puck/compare/v0.2.22...v0.2.23
 [0.2.22]: https://github.com/bradleygolden/puck/compare/v0.2.21...v0.2.22
 [0.2.21]: https://github.com/bradleygolden/puck/compare/v0.2.20...v0.2.21
