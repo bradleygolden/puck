@@ -643,10 +643,19 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       end
 
       test "image URL with explicit media_type" do
-        part = %Content.Part{type: :image_url, url: "https://example.com/img.png", media_type: "image/png"}
+        part = %Content.Part{
+          type: :image_url,
+          url: "https://example.com/img.png",
+          media_type: "image/png"
+        }
+
         args = call_multimodal([part])
 
-        assert %{messages: [%{content: [%{url: "https://example.com/img.png", media_type: "image/png"}]}]} =
+        assert %{
+                 messages: [
+                   %{content: [%{url: "https://example.com/img.png", media_type: "image/png"}]}
+                 ]
+               } =
                  args
       end
 
@@ -695,7 +704,9 @@ if Code.ensure_loaded?(BamlElixir.Client) do
       test "file binary data" do
         args = call_multimodal([Content.file("pdfbytes", "application/pdf")])
 
-        assert %{messages: [%{content: [%{base64: encoded, media_type: "application/pdf"}]}]} = args
+        assert %{messages: [%{content: [%{base64: encoded, media_type: "application/pdf"}]}]} =
+                 args
+
         assert Base.decode64!(encoded) == "pdfbytes"
       end
 
